@@ -1,0 +1,12 @@
+describe("smoke test", function()
+  it("runs", function()
+    assert.equals(1, 1)
+  end)
+
+  it("can load sapling_harness", function()
+    local harness = require("tests.util.sapling_harness")
+    assert.is_function(harness.create_temp_repo)
+    assert.is_function(harness.in_prepared_repo)
+    assert.is_function(harness.sl_available)
+  end)
+end)
