@@ -209,4 +209,41 @@ describe("smartlog parser", function()
       assert.is_string(result[1].desc)
     end)
   end)
+
+  describe("integration with real sl", function()
+    local harness = require("tests.util.sapling_harness")
+
+    it("parses real sl smartlog output", function()
+      if not harness.sl_available() then
+        pending("sl not available")
+        return
+      end
+
+      harness.in_repo_with_commit(function(repo_path)
+        local cwd = vim.fn.getcwd()
+        vim.fn.chdir(repo_path)
+
+        -- Run sl smartlog with our template
+        local output = vim.fn.system({ "sl", "smartlog", "-T", smartlog.TEMPLATE })
+        local lines = vim.split(output, "\n", { plain = true })
+        local result = smartlog.parse(lines)
+
+        vim.fn.chdir(cwd)
+
+        -- Verify structure
+        assert.is_table(result)
+        assert.is_true(#result >= 1, "Should have at least one commit")
+
+        -- Check that the commit has expected fields
+        local commit = result[1]
+        assert.is_string(commit.node)
+        assert.is_true(#commit.node > 0, "Node should not be empty")
+        assert.is_string(commit.graphnode)
+        assert.is_string(commit.author)
+        assert.is_string(commit.date)
+        assert.is_string(commit.desc)
+        assert.is_table(commit.bookmarks)
+      end)
+    end)
+  end)
 end)

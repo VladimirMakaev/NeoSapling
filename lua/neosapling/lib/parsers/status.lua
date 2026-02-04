@@ -12,6 +12,9 @@ local M = {}
 ---The --print0 format outputs entries separated by NUL characters.
 ---Each entry format: "X path" where X is the status character followed by a space.
 ---
+---Note: Vim internally converts NUL (0x00) to SOH (0x01) in strings,
+---so we handle both separators for compatibility.
+---
 ---@param lines string[] Raw output lines from CLI (may span multiple lines)
 ---@return FileStatus[] Parsed file statuses
 function M.parse(lines)
@@ -22,8 +25,11 @@ function M.parse(lines)
     return result
   end
 
-  -- Join lines and split on NUL character
+  -- Join lines and normalize separators
+  -- Vim converts NUL (0x00) to SOH (0x01) internally, so handle both
   local raw = table.concat(lines, "\n")
+  -- Replace SOH with NUL for consistent splitting
+  raw = raw:gsub("\1", "\0")
   local entries = vim.split(raw, "\0", { plain = true, trimempty = true })
 
   for _, entry in ipairs(entries) do

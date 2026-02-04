@@ -176,4 +176,78 @@ describe("status parser", function()
       assert.is_table(result.clean)
     end)
   end)
+
+  describe("integration with real sl", function()
+    local harness = require("tests.util.sapling_harness")
+
+    it("parses real sl status output for modified file", function()
+      if not harness.sl_available() then
+        pending("sl not available")
+        return
+      end
+
+      harness.in_repo_with_commit(function(repo_path)
+        local cwd = vim.fn.getcwd()
+        vim.fn.chdir(repo_path)
+
+        -- Modify the existing test.txt file
+        vim.fn.writefile({ "Modified content" }, repo_path .. "/test.txt")
+
+        -- Run sl status --print0 and wrap in table for parser
+        local output = vim.fn.system({ "sl", "status", "--print0" })
+        local result = status.parse({ output })
+
+        vim.fn.chdir(cwd)
+
+        -- Verify structure
+        assert.is_table(result)
+        assert.is_true(#result >= 1, "Should have at least one status entry")
+
+        -- Find the modified file
+        local found_modified = false
+        for _, entry in ipairs(result) do
+          if entry.path == "test.txt" and entry.status == "M" then
+            found_modified = true
+            break
+          end
+        end
+        assert.is_true(found_modified, "Should find modified test.txt")
+      end)
+    end)
+
+    it("parses real sl status output for untracked file", function()
+      if not harness.sl_available() then
+        pending("sl not available")
+        return
+      end
+
+      harness.in_repo_with_commit(function(repo_path)
+        local cwd = vim.fn.getcwd()
+        vim.fn.chdir(repo_path)
+
+        -- Create an untracked file
+        vim.fn.writefile({ "Untracked content" }, repo_path .. "/untracked.txt")
+
+        -- Run sl status --print0 and wrap in table for parser
+        local output = vim.fn.system({ "sl", "status", "--print0" })
+        local result = status.parse({ output })
+
+        vim.fn.chdir(cwd)
+
+        -- Verify structure
+        assert.is_table(result)
+        assert.is_true(#result >= 1, "Should have at least one status entry")
+
+        -- Find the untracked file
+        local found_untracked = false
+        for _, entry in ipairs(result) do
+          if entry.path == "untracked.txt" and entry.status == "?" then
+            found_untracked = true
+            break
+          end
+        end
+        assert.is_true(found_untracked, "Should find untracked untracked.txt")
+      end)
+    end)
+  end)
 end)

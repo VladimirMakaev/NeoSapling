@@ -239,4 +239,48 @@ describe("diff parser", function()
       assert.equals(3, hunk.new_count)
     end)
   end)
+
+  describe("integration with real sl", function()
+    local harness = require("tests.util.sapling_harness")
+
+    it("parses real sl diff output", function()
+      if not harness.sl_available() then
+        pending("sl not available")
+        return
+      end
+
+      harness.in_repo_with_commit(function(repo_path)
+        local cwd = vim.fn.getcwd()
+        vim.fn.chdir(repo_path)
+
+        -- Modify the existing test.txt file to create a diff
+        vim.fn.writefile({ "Modified content", "New line added" }, repo_path .. "/test.txt")
+
+        -- Run sl diff --git
+        local output = vim.fn.system({ "sl", "diff", "--git" })
+        local lines = vim.split(output, "\n", { plain = true })
+        local result = diff.parse(lines)
+
+        vim.fn.chdir(cwd)
+
+        -- Verify structure
+        assert.is_table(result)
+        assert.is_true(#result >= 1, "Should have at least one file diff")
+
+        -- Check that the diff has expected structure
+        local file_diff = result[1]
+        assert.is_string(file_diff.from_path)
+        assert.is_string(file_diff.to_path)
+        assert.is_table(file_diff.hunks)
+        assert.is_true(#file_diff.hunks >= 1, "Should have at least one hunk")
+
+        -- Check hunk structure
+        local hunk = file_diff.hunks[1]
+        assert.is_number(hunk.old_start)
+        assert.is_number(hunk.new_start)
+        assert.is_table(hunk.lines)
+        assert.is_true(#hunk.lines >= 1, "Hunk should have lines")
+      end)
+    end)
+  end)
 end)
