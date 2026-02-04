@@ -1,0 +1,26 @@
+# NeoSapling project ignores
+
+# Plenary clone directory (for tests)
+tmp/
+
+# Claude Code settings
+.claude/
+
+# Lua artifacts
+*.sw*
+.luarocks/
+lua_modules/
+*.rock
+
+# Neovim artifacts
+.netrwhist
+tags
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+.idea/
+.vscode/
+*.sublime-*
