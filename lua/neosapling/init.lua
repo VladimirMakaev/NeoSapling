@@ -43,7 +43,7 @@ M.sl = {}
 ---@return vim.SystemObj|nil Handle for cancellation, nil if sl not found
 function M.sl.status(callback)
   cli.status():print0():call({}, function(result)
-    if result.exit_code ~= 0 then
+    if result.code ~= 0 then
       callback(nil, "sl status failed: " .. table.concat(result.stderr, "\n"))
       return
     end
@@ -77,7 +77,7 @@ function M.sl.diff(opts, callback)
   end
 
   builder:call({}, function(result)
-    if result.exit_code ~= 0 then
+    if result.code ~= 0 then
       callback(nil, "sl diff failed: " .. table.concat(result.stderr, "\n"))
       return
     end
@@ -95,7 +95,7 @@ end
 ---@return vim.SystemObj|nil Handle for cancellation
 function M.sl.smartlog(callback)
   cli.smartlog():template(parsers.smartlog.TEMPLATE):call({}, function(result)
-    if result.exit_code ~= 0 then
+    if result.code ~= 0 then
       callback(nil, "sl smartlog failed: " .. table.concat(result.stderr, "\n"))
       return
     end
