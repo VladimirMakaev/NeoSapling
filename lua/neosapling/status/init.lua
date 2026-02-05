@@ -151,20 +151,36 @@ function M._render()
   setup_folds(result.folds)
 end
 
+-- Version token for preventing stale data from async operations
+local current_version = nil
+
 --- Refresh status data and re-render
 function M.refresh()
-  neosapling.sl.status(function(grouped_status, err)
-    if err then
-      vim.notify("NeoSapling: " .. err, vim.log.levels.ERROR)
+  local version = vim.loop.now()
+  current_version = version
+
+  neosapling.sl.status(function(grouped_status, err1)
+    if current_version ~= version then return end -- Stale
+    if err1 then
+      vim.notify("NeoSapling: " .. err1, vim.log.levels.ERROR)
       return
     end
 
-    current_data = {
-      status = grouped_status,
-    }
+    neosapling.sl.smartlog(function(commits, err2)
+      if current_version ~= version then return end -- Stale
+      if err2 then
+        -- Non-fatal: show status without smartlog
+        commits = {}
+      end
 
-    vim.schedule(function()
-      M._render()
+      current_data = {
+        status = grouped_status,
+        commits = commits,
+      }
+
+      vim.schedule(function()
+        M._render()
+      end)
     end)
   end)
 end
