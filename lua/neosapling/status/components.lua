@@ -45,8 +45,53 @@ local function build_section(title, files, status_char, hl_group, section_id, li
   return section, current_line
 end
 
+--- Build a commits section showing the current stack
+---@param commits Commit[] Commits from smartlog
+---@param line_map table<number, Item> Line map to populate
+---@param current_line number Current line number (1-indexed)
+---@return Component|nil, number Commits section (nil if empty) and updated line number
+local function build_commits_section(commits, line_map, current_line)
+  -- Filter to current stack: commits where graphnode is not "x" (obsolete)
+  local stack_commits = {}
+  for _, commit in ipairs(commits) do
+    if commit.graphnode ~= "x" then
+      table.insert(stack_commits, commit)
+    end
+  end
+
+  if #stack_commits == 0 then
+    return nil, current_line
+  end
+
+  local section_start = current_line
+  line_map[section_start] = { type = "section", id = "commits" }
+
+  local commit_rows = {}
+  for _, commit in ipairs(stack_commits) do
+    current_line = current_line + 1
+    local graphnode_hl = commit.graphnode == "@" and "NeoSaplingCurrent" or "NeoSaplingHash"
+    table.insert(commit_rows, ui.row({
+      ui.text("  " .. commit.graphnode .. " ", { hl = graphnode_hl }),
+      ui.text(commit.node .. " ", { hl = "NeoSaplingHash" }),
+      ui.text(commit.desc),
+    }))
+    line_map[current_line] = { type = "commit", commit = commit }
+  end
+
+  local section = ui.fold(
+    ui.row({
+      ui.text("Current Stack", { hl = "NeoSaplingSection" }),
+      ui.text(" (" .. #stack_commits .. " commits)"),
+    }),
+    commit_rows,
+    { id = "commits" }
+  )
+
+  return section, current_line
+end
+
 --- Build status view component tree
----@param data {status: GroupedStatus}
+---@param data {status: GroupedStatus, commits?: Commit[], expanded_files?: table<string, FileDiff>}
 ---@return Component, table<number, Item> tree and line mapping
 function M.build(data)
   local line_map = {}
@@ -116,6 +161,22 @@ function M.build(data)
     current_line = line_after_staged
     table.insert(children, ui.text(""))
     current_line = current_line + 1
+    current_line = current_line + 1
+  end
+
+  -- Current Stack section (commits from smartlog)
+  if data.commits and #data.commits > 0 then
+    local commits_section, line_after_commits = build_commits_section(
+      data.commits,
+      line_map,
+      current_line
+    )
+    if commits_section then
+      table.insert(children, commits_section)
+      current_line = line_after_commits
+      table.insert(children, ui.text(""))
+      current_line = current_line + 1
+    end
   end
 
   return ui.col(children), line_map
