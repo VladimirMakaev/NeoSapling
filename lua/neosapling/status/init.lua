@@ -1,0 +1,149 @@
+--- Status buffer module for NeoSapling.
+--- Orchestrates buffer lifecycle, data fetch, render, and fold management.
+--- @module neosapling.status
+
+local ui = require("neosapling.lib.ui")
+local neosapling = require("neosapling")
+local components = require("neosapling.status.components")
+
+local M = {}
+
+-- Module state
+local status_buffer = nil
+local current_data = nil
+local line_map = {}
+local fold_regions = {}
+
+-- Fold level cache for performance (Pitfall #5 from RESEARCH.md)
+local fold_level_cache = {}
+local cache_valid = false
+
+--- Global foldexpr function (must be global for v:lua access)
+---@param lnum number Line number (1-indexed)
+---@return string Fold level expression
+function _G.neosapling_status_foldexpr(lnum)
+  if not cache_valid then
+    fold_level_cache = {}
+    for _, region in ipairs(fold_regions) do
+      fold_level_cache[region.start] = ">1"
+      for i = region.start + 1, region.stop do
+        fold_level_cache[i] = "1"
+      end
+    end
+    cache_valid = true
+  end
+  return fold_level_cache[lnum] or "0"
+end
+
+--- Setup buffer options and keymaps
+local function setup_buffer()
+  if not status_buffer or not status_buffer:is_valid() then
+    return
+  end
+
+  local bufnr = status_buffer.handle
+
+  -- Set filetype
+  vim.api.nvim_buf_set_option(bufnr, "filetype", "neosapling")
+
+  -- Tab toggles fold under cursor
+  vim.keymap.set("n", "<Tab>", function()
+    local foldclosed = vim.fn.foldclosed(".")
+    if foldclosed == -1 then
+      vim.cmd("normal! zc")
+    else
+      vim.cmd("normal! zo")
+    end
+  end, { buffer = bufnr, desc = "Toggle fold" })
+end
+
+--- Setup folds for status buffer
+---@param folds RenderFold[] Fold regions from renderer
+local function setup_folds(folds)
+  fold_regions = folds
+  cache_valid = false -- Invalidate cache
+
+  local win = vim.fn.bufwinid(status_buffer.handle)
+  if win ~= -1 then
+    vim.api.nvim_win_set_option(win, "foldmethod", "expr")
+    vim.api.nvim_win_set_option(win, "foldexpr", "v:lua.neosapling_status_foldexpr(v:lnum)")
+    vim.api.nvim_win_set_option(win, "foldlevel", 99) -- Start with all open
+    vim.api.nvim_win_set_option(win, "foldenable", true)
+  end
+end
+
+--- Internal: Render current data to buffer
+function M._render()
+  if not current_data or not status_buffer or not status_buffer:is_valid() then
+    return
+  end
+
+  -- Invalidate fold cache before render
+  cache_valid = false
+
+  -- Build component tree
+  local tree, new_line_map = components.build(current_data)
+  line_map = new_line_map
+
+  -- Render to buffer
+  local result = ui.render(tree)
+  status_buffer:set_lines(result.lines)
+  status_buffer:clear_highlights()
+
+  for _, hl in ipairs(result.highlights) do
+    status_buffer:add_highlight(hl.line, hl.col_start, hl.col_end, hl.hl)
+  end
+
+  -- Setup folds
+  setup_folds(result.folds)
+end
+
+--- Refresh status data and re-render
+function M.refresh()
+  neosapling.sl.status(function(grouped_status, err)
+    if err then
+      vim.notify("NeoSapling: " .. err, vim.log.levels.ERROR)
+      return
+    end
+
+    current_data = {
+      status = grouped_status,
+    }
+
+    vim.schedule(function()
+      M._render()
+    end)
+  end)
+end
+
+--- Open the status buffer
+function M.open()
+  -- Create or get existing buffer
+  if not status_buffer or not status_buffer:is_valid() then
+    status_buffer = ui.Buffer:new("neosapling://status")
+    setup_buffer()
+  end
+
+  status_buffer:show("split")
+  M.refresh()
+end
+
+--- Close the status buffer
+function M.close()
+  if status_buffer and status_buffer:is_valid() then
+    status_buffer:destroy()
+    status_buffer = nil
+  end
+  current_data = nil
+  line_map = {}
+  fold_regions = {}
+  cache_valid = false
+end
+
+--- Get the current line map (for context module)
+---@return table<number, Item>
+function M.get_line_map()
+  return line_map
+end
+
+return M
