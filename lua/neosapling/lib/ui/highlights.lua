@@ -28,6 +28,13 @@ local highlight_groups = {
   NeoSaplingRemote = { link = "String" }, -- Remote names
   NeoSaplingHeader = { bold = true, link = "Statement" }, -- Buffer headers
   NeoSaplingSubtitle = { italic = true, link = "Comment" }, -- Subtitles/descriptions
+
+  -- Popup UI elements
+  NeoSaplingPopup = { link = "NormalFloat" },
+  NeoSaplingPopupBorder = { link = "FloatBorder" },
+  NeoSaplingPopupTitle = { bold = true, link = "Title" },
+  NeoSaplingPopupHeading = { bold = true, link = "Statement" },
+  NeoSaplingPopupKey = { link = "Special" },
 }
 
 --- Check if a highlight group is already defined by user
