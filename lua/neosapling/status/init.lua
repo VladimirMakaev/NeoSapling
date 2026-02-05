@@ -118,6 +118,36 @@ local function setup_buffer()
   vim.keymap.set("n", "q", function()
     require("neosapling.status").close()
   end, { buffer = bufnr, desc = "Close status buffer" })
+
+  -- Stage file (s key)
+  vim.keymap.set("n", "s", function()
+    local context = require("neosapling.status.context")
+    local file_actions = require("neosapling.actions.file")
+    local item = context.get_item_at_cursor(line_map)
+    if item and item.type == "file" and item.file then
+      file_actions.stage(item.file)
+    end
+  end, { buffer = bufnr, desc = "Stage file" })
+
+  -- Unstage file (u key)
+  vim.keymap.set("n", "u", function()
+    local context = require("neosapling.status.context")
+    local file_actions = require("neosapling.actions.file")
+    local item = context.get_item_at_cursor(line_map)
+    if item and item.type == "file" and item.file then
+      file_actions.unstage(item.file)
+    end
+  end, { buffer = bufnr, desc = "Unstage file" })
+
+  -- Discard changes (x key)
+  vim.keymap.set("n", "x", function()
+    local context = require("neosapling.status.context")
+    local file_actions = require("neosapling.actions.file")
+    local item = context.get_item_at_cursor(line_map)
+    if item and item.type == "file" and item.file then
+      file_actions.discard(item.file)
+    end
+  end, { buffer = bufnr, desc = "Discard changes" })
 end
 
 --- Setup folds for status buffer
