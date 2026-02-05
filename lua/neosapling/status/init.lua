@@ -103,6 +103,21 @@ local function setup_buffer()
       end
     end
   end, { buffer = bufnr, desc = "Toggle fold or file expansion" })
+
+  -- Help popup (? key)
+  vim.keymap.set("n", "?", function()
+    require("neosapling.popups.help").create()
+  end, { buffer = bufnr, desc = "Open help popup" })
+
+  -- Commit popup (c key)
+  vim.keymap.set("n", "c", function()
+    require("neosapling.popups.commit").create()
+  end, { buffer = bufnr, desc = "Open commit popup" })
+
+  -- Close buffer (q key)
+  vim.keymap.set("n", "q", function()
+    require("neosapling.status").close()
+  end, { buffer = bufnr, desc = "Close status buffer" })
 end
 
 --- Setup folds for status buffer
