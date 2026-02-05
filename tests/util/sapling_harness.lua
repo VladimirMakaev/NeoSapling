@@ -104,4 +104,50 @@ function M.in_repo_with_commit(test_fn)
   end)
 end
 
+--- Store state for simple create/cleanup pattern
+local current_repo_path = nil
+local current_cleanup_fn = nil
+
+--- Create a repository and store for later cleanup
+--- Returns repo path, stores cleanup function internally
+---@return string repo_path
+function M.create_repo()
+  if current_cleanup_fn then
+    -- Clean up previous repo if any
+    current_cleanup_fn()
+  end
+
+  local repo_path, cleanup = M.create_temp_repo()
+  M.with_initial_commit(repo_path)
+
+  current_repo_path = repo_path
+  current_cleanup_fn = cleanup
+
+  -- Change to repo directory for sl commands
+  vim.fn.chdir(repo_path)
+
+  return repo_path
+end
+
+--- Write content to a file relative to current repo
+---@param relative_path string Relative path within repo
+---@param content string Content to write
+function M.write_file(relative_path, content)
+  if not current_repo_path then
+    error("No repo created - call create_repo() first")
+  end
+
+  local full_path = current_repo_path .. "/" .. relative_path
+  vim.fn.writefile({ content }, full_path)
+end
+
+--- Cleanup the current repository
+function M.cleanup()
+  if current_cleanup_fn then
+    current_cleanup_fn()
+    current_cleanup_fn = nil
+    current_repo_path = nil
+  end
+end
+
 return M
