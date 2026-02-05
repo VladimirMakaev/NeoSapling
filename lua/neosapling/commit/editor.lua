@@ -25,7 +25,7 @@ local function get_commit_files(callback)
     local files = {}
 
     -- Added files (A) are always included
-    for _, file in ipairs(grouped.staged or {}) do
+    for _, file in ipairs(grouped.added or {}) do
       table.insert(files, file.path)
     end
 
