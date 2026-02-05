@@ -14,17 +14,16 @@ local function schedule_refresh()
   end)
 end
 
---- Create a new commit with editor
---- Opens $EDITOR for commit message
+--- Create a new commit with buffer-based editor
 ---@param opts table|nil Optional options
 function M.commit(opts)
   opts = opts or {}
-  vim.cmd("!sl commit")
-  schedule_refresh()
+  require("neosapling.commit.editor").open({ amend = false })
 end
 
---- Amend the current commit with editor
---- Opens $EDITOR for editing commit message
+--- Amend the current commit
+--- For now, uses terminal command as amend needs existing message loading
+--- TODO: Implement buffer-based amend in future phase
 function M.amend()
   vim.cmd("!sl commit --amend")
   schedule_refresh()
