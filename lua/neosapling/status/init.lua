@@ -120,6 +120,28 @@ local function setup_folds(folds)
   end
 end
 
+--- Close default-collapsed sections (Recent Stacks and Bookmarks)
+---@param folds RenderFold[] Fold regions from renderer
+local function close_default_collapsed(folds)
+  local win = vim.fn.bufwinid(status_buffer.handle)
+  if win == -1 then return end
+
+  vim.schedule(function()
+    if not status_buffer or not status_buffer:is_valid() then return end
+
+    -- Find and close sections that should be collapsed by default
+    for _, region in ipairs(folds) do
+      local item = line_map[region.start]
+      if item and item.type == "section" and (item.id == "Recent Stacks" or item.id == "Bookmarks") then
+        vim.api.nvim_win_call(win, function()
+          vim.fn.cursor(region.start, 1)
+          pcall(vim.cmd, "normal! zc")
+        end)
+      end
+    end
+  end)
+end
+
 --- Internal: Render current data to buffer
 function M._render()
   if not current_data or not status_buffer or not status_buffer:is_valid() then
@@ -133,6 +155,7 @@ function M._render()
   local build_data = {
     status = current_data.status,
     commits = current_data.commits,
+    bookmarks = current_data.bookmarks,
     expanded_files = expanded_files,
   }
   local tree, new_line_map = components.build(build_data)
@@ -149,6 +172,9 @@ function M._render()
 
   -- Setup folds
   setup_folds(result.folds)
+
+  -- Close sections that should be collapsed by default
+  close_default_collapsed(result.folds)
 end
 
 -- Version token for preventing stale data from async operations
@@ -173,13 +199,22 @@ function M.refresh()
         commits = {}
       end
 
-      current_data = {
-        status = grouped_status,
-        commits = commits,
-      }
+      neosapling.sl.bookmarks(function(bookmarks, err3)
+        if current_version ~= version then return end -- Stale
+        if err3 then
+          -- Non-fatal: show status without bookmarks
+          bookmarks = {}
+        end
 
-      vim.schedule(function()
-        M._render()
+        current_data = {
+          status = grouped_status,
+          commits = commits,
+          bookmarks = bookmarks,
+        }
+
+        vim.schedule(function()
+          M._render()
+        end)
       end)
     end)
   end)
