@@ -18,14 +18,24 @@ M.config = {}
 ---@param opts? table Optional configuration table
 ---@return boolean true if setup succeeded, false if sl not found
 function M.setup(opts)
-  M.config = opts or {}
+  -- Configure plugin
+  local config = require("neosapling.lib.config")
+  config.setup(opts)
+  M.config = config.values
 
   -- Validate sl is available
   if not util.check_sapling() then
     return false
   end
 
-  -- Future: Initialize user commands, autocommands, keymaps
+  -- Setup highlights
+  require("neosapling.lib.ui.highlights").setup()
+
+  -- Register user commands
+  vim.api.nvim_create_user_command("NeoSapling", function()
+    require("neosapling.status").open()
+  end, { desc = "Open NeoSapling status view" })
+
   return true
 end
 
