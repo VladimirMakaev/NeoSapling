@@ -105,6 +105,24 @@ function M.sl.smartlog(callback)
   end)
 end
 
+--- Get bookmarks asynchronously
+---
+--- Runs `sl bookmark -T TEMPLATE` and parses the output into bookmark objects.
+---
+---@param callback fun(bookmarks: Bookmark[]|nil, err: string|nil)
+---@return vim.SystemObj|nil Handle for cancellation
+function M.sl.bookmarks(callback)
+  cli.bookmarks():template(parsers.bookmarks.TEMPLATE):call({}, function(result)
+    if result.code ~= 0 then
+      callback(nil, "sl bookmark failed: " .. table.concat(result.stderr, "\n"))
+      return
+    end
+
+    local bookmarks = parsers.bookmarks.parse(result.stdout)
+    callback(bookmarks, nil)
+  end)
+end
+
 -- =============================================================================
 -- Raw CLI access for advanced usage
 -- =============================================================================

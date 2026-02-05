@@ -101,6 +101,13 @@ function M.pull()
   return CommandBuilder:new(runner):pull()
 end
 
+--- Create a bookmark command builder
+--- Usage: sl.bookmarks():template(...):call({}, callback)
+---@return CommandBuilder Pre-configured builder with "bookmark" subcommand
+function M.bookmarks()
+  return CommandBuilder:new(runner):bookmark()
+end
+
 -- =============================================================================
 -- Low-level access for advanced usage
 -- =============================================================================

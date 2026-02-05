@@ -127,6 +127,12 @@ function CommandBuilder:pull()
   return self:arg("pull")
 end
 
+--- Add "bookmark" subcommand
+---@return CommandBuilder self for chaining
+function CommandBuilder:bookmark()
+  return self:arg("bookmark")
+end
+
 -- =============================================================================
 -- Flag convenience methods
 -- =============================================================================

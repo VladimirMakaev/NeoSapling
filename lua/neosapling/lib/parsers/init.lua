@@ -7,5 +7,6 @@ local M = {}
 M.status = require("neosapling.lib.parsers.status")
 M.diff = require("neosapling.lib.parsers.diff")
 M.smartlog = require("neosapling.lib.parsers.smartlog")
+M.bookmarks = require("neosapling.lib.parsers.bookmarks")
 
 return M
