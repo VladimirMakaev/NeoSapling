@@ -6,6 +6,60 @@ local ui = require("neosapling.lib.ui")
 
 local M = {}
 
+--- Build a file entry with optional inline diff preview
+---@param file FileStatus The file to display
+---@param diff FileDiff|nil Diff data if file is expanded
+---@param status_char string Status indicator character (e.g., "?", "M", "A")
+---@param hl_group string Highlight group for status indicator
+---@param section_id string Section identifier
+---@param line_map table<number, Item> Line map to populate
+---@param current_line number Current line number (1-indexed)
+---@return Component, number File component and updated line number
+local function build_file_entry(file, diff, status_char, hl_group, section_id, line_map, current_line)
+  -- Build the file header row
+  local file_row = ui.row({
+    ui.text("  " .. status_char .. " ", { hl = hl_group }),
+    ui.text(file.path),
+  })
+
+  -- Record file in line map
+  line_map[current_line] = { type = "file", file = file, section = section_id }
+
+  -- If no diff or no hunks, return simple row
+  if not diff or not diff.hunks or #diff.hunks == 0 then
+    return file_row, current_line
+  end
+
+  -- Build diff hunk children
+  local hunk_children = {}
+  for _, hunk in ipairs(diff.hunks) do
+    -- Hunk header
+    current_line = current_line + 1
+    local hunk_header = ui.row({
+      ui.text("    @@ ", { hl = "NeoSaplingHash" }),
+      ui.text("-" .. hunk.old_start .. "," .. hunk.old_count .. " +" .. hunk.new_start .. "," .. hunk.new_count),
+    })
+    table.insert(hunk_children, hunk_header)
+    line_map[current_line] = { type = "hunk", hunk = hunk, file = file, section = section_id }
+
+    -- Hunk lines
+    for _, line in ipairs(hunk.lines) do
+      current_line = current_line + 1
+      local hl = nil
+      if line:sub(1, 1) == "+" then
+        hl = "DiffAdd"
+      elseif line:sub(1, 1) == "-" then
+        hl = "DiffDelete"
+      end
+      table.insert(hunk_children, ui.text("      " .. line, { hl = hl }))
+      line_map[current_line] = { type = "diff_line", line = line, file = file, section = section_id }
+    end
+  end
+
+  -- Return fold with file row as header and hunks as children
+  return ui.fold(file_row, hunk_children, { id = "file:" .. file.path }), current_line
+end
+
 --- Build a status section with files
 ---@param title string Section title (e.g., "Untracked files")
 ---@param files FileStatus[] Files in this section
@@ -14,23 +68,27 @@ local M = {}
 ---@param section_id string Section identifier for line mapping
 ---@param line_map table<number, Item> Line map to populate
 ---@param current_line number Current line number (1-indexed)
+---@param expanded_files table<string, FileDiff>|nil Map of expanded file paths to their diffs
 ---@return Component|nil, number Section component (nil if empty) and updated line number
-local function build_section(title, files, status_char, hl_group, section_id, line_map, current_line)
+local function build_section(title, files, status_char, hl_group, section_id, line_map, current_line, expanded_files)
   if #files == 0 then
     return nil, current_line
   end
 
+  expanded_files = expanded_files or {}
+
   local section_start = current_line
   line_map[section_start] = { type = "section", id = section_id }
 
-  local file_rows = {}
+  local file_entries = {}
   for _, file in ipairs(files) do
     current_line = current_line + 1
-    table.insert(file_rows, ui.row({
-      ui.text("  " .. status_char .. " ", { hl = hl_group }),
-      ui.text(file.path),
-    }))
-    line_map[current_line] = { type = "file", file = file, section = section_id }
+    local diff = expanded_files[file.path]
+    local entry, line_after_entry = build_file_entry(
+      file, diff, status_char, hl_group, section_id, line_map, current_line
+    )
+    table.insert(file_entries, entry)
+    current_line = line_after_entry
   end
 
   local section = ui.fold(
@@ -38,7 +96,7 @@ local function build_section(title, files, status_char, hl_group, section_id, li
       ui.text(title, { hl = "NeoSaplingSection" }),
       ui.text(" (" .. #files .. ")"),
     }),
-    file_rows,
+    file_entries,
     { id = section_id }
   )
 
@@ -96,6 +154,7 @@ end
 function M.build(data)
   local line_map = {}
   local current_line = 1
+  local expanded_files = data.expanded_files or {}
 
   local children = {}
 
@@ -117,7 +176,8 @@ function M.build(data)
     "NeoSaplingUntracked",
     "untracked",
     line_map,
-    current_line
+    current_line,
+    expanded_files
   )
   if untracked then
     table.insert(children, untracked)
@@ -136,7 +196,8 @@ function M.build(data)
     "NeoSaplingUnstaged",
     "unstaged",
     line_map,
-    current_line
+    current_line,
+    expanded_files
   )
   if unstaged then
     table.insert(children, unstaged)
@@ -154,7 +215,8 @@ function M.build(data)
     "NeoSaplingStaged",
     "staged",
     line_map,
-    current_line
+    current_line,
+    expanded_files
   )
   if staged then
     table.insert(children, staged)

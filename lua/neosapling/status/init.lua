@@ -13,6 +13,7 @@ local status_buffer = nil
 local current_data = nil
 local line_map = {}
 local fold_regions = {}
+local expanded_files = {}  -- path -> FileDiff cache
 
 -- Fold level cache for performance (Pitfall #5 from RESEARCH.md)
 local fold_level_cache = {}
@@ -35,6 +36,36 @@ function _G.neosapling_status_foldexpr(lnum)
   return fold_level_cache[lnum] or "0"
 end
 
+--- Toggle file expansion (show/hide inline diff preview)
+---@param file FileStatus File to toggle
+local function toggle_file_expand(file)
+  local path = file.path
+
+  -- If already expanded, collapse
+  if expanded_files[path] then
+    expanded_files[path] = nil
+    M._render()
+    return
+  end
+
+  -- Fetch diff for this file
+  neosapling.sl.diff({ files = { path } }, function(diffs, err)
+    if err or #diffs == 0 then
+      -- No diff available (new file, etc.) - just mark as expanded with empty diff
+      vim.schedule(function()
+        expanded_files[path] = { hunks = {} }
+        M._render()
+      end)
+      return
+    end
+
+    vim.schedule(function()
+      expanded_files[path] = diffs[1]
+      M._render()
+    end)
+  end)
+end
+
 --- Setup buffer options and keymaps
 local function setup_buffer()
   if not status_buffer or not status_buffer:is_valid() then
@@ -46,15 +77,32 @@ local function setup_buffer()
   -- Set filetype
   vim.api.nvim_buf_set_option(bufnr, "filetype", "neosapling")
 
-  -- Tab toggles fold under cursor
+  -- Tab toggles fold or file expansion based on cursor position
   vim.keymap.set("n", "<Tab>", function()
-    local foldclosed = vim.fn.foldclosed(".")
-    if foldclosed == -1 then
-      vim.cmd("normal! zc")
+    local lnum = vim.fn.line(".")
+    local item = line_map[lnum]
+
+    if item and item.type == "file" then
+      -- Toggle file diff expansion
+      toggle_file_expand(item.file)
+    elseif item and item.type == "section" then
+      -- Toggle section fold
+      local foldclosed = vim.fn.foldclosed(".")
+      if foldclosed == -1 then
+        vim.cmd("normal! zc")
+      else
+        vim.cmd("normal! zo")
+      end
     else
-      vim.cmd("normal! zo")
+      -- Default: toggle fold if on a fold
+      local foldclosed = vim.fn.foldclosed(".")
+      if foldclosed == -1 then
+        pcall(vim.cmd, "normal! zc")
+      else
+        vim.cmd("normal! zo")
+      end
     end
-  end, { buffer = bufnr, desc = "Toggle fold" })
+  end, { buffer = bufnr, desc = "Toggle fold or file expansion" })
 end
 
 --- Setup folds for status buffer
@@ -81,8 +129,13 @@ function M._render()
   -- Invalidate fold cache before render
   cache_valid = false
 
-  -- Build component tree
-  local tree, new_line_map = components.build(current_data)
+  -- Build component tree with expanded files
+  local build_data = {
+    status = current_data.status,
+    commits = current_data.commits,
+    expanded_files = expanded_files,
+  }
+  local tree, new_line_map = components.build(build_data)
   line_map = new_line_map
 
   -- Render to buffer
@@ -137,6 +190,7 @@ function M.close()
   current_data = nil
   line_map = {}
   fold_regions = {}
+  expanded_files = {}
   cache_valid = false
 end
 
