@@ -3,6 +3,7 @@
 --- @module neosapling.status.components
 
 local ui = require("neosapling.lib.ui")
+local staged = require("neosapling.status.staged")
 
 local M = {}
 
@@ -16,9 +17,17 @@ local M = {}
 ---@param current_line number Current line number (1-indexed)
 ---@return Component, number File component and updated line number
 local function build_file_entry(file, diff, status_char, hl_group, section_id, line_map, current_line)
+  -- For modified files, check if virtually staged and update indicator
+  local display_char = status_char
+  local display_hl = hl_group
+  if file.status == "M" and staged.is_staged(file.path) then
+    display_char = "M*"
+    display_hl = "NeoSaplingStaged"
+  end
+
   -- Build the file header row
   local file_row = ui.row({
-    ui.text("  " .. status_char .. " ", { hl = hl_group }),
+    ui.text("  " .. display_char .. " ", { hl = display_hl }),
     ui.text(file.path),
   })
 
