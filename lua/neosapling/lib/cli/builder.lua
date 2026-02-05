@@ -85,6 +85,18 @@ function CommandBuilder:add()
   return self:arg("add")
 end
 
+--- Add "forget" subcommand
+---@return CommandBuilder self for chaining
+function CommandBuilder:forget()
+  return self:arg("forget")
+end
+
+--- Add "revert" subcommand
+---@return CommandBuilder self for chaining
+function CommandBuilder:revert()
+  return self:arg("revert")
+end
+
 --- Add "goto" subcommand
 ---@return CommandBuilder self for chaining
 function CommandBuilder:goto_rev()

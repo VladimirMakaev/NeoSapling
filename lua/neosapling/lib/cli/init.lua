@@ -52,6 +52,20 @@ function M.add()
   return CommandBuilder:new(runner):add()
 end
 
+--- Create a forget command builder
+--- Usage: sl.forget():file("path/to/file"):call({}, callback)
+---@return CommandBuilder Pre-configured builder with "forget" subcommand
+function M.forget()
+  return CommandBuilder:new(runner):forget()
+end
+
+--- Create a revert command builder
+--- Usage: sl.revert():opt("--no-backup"):file("path/to/file"):call({}, callback)
+---@return CommandBuilder Pre-configured builder with "revert" subcommand
+function M.revert()
+  return CommandBuilder:new(runner):revert()
+end
+
 --- Create a goto command builder
 --- Usage: sl.goto_rev():rev("abc123"):call({}, callback)
 ---@return CommandBuilder Pre-configured builder with "goto" subcommand
