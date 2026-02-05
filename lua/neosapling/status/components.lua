@@ -76,8 +76,11 @@ function M.build(data)
   )
   if untracked then
     table.insert(children, untracked)
-    current_line = line_after_untracked + 1 -- +1 for empty line between sections
+    current_line = line_after_untracked
+    -- Add empty line between sections (accounts for col's new_line before it)
     table.insert(children, ui.text(""))
+    current_line = current_line + 1  -- For the empty text itself
+    current_line = current_line + 1  -- For col's new_line before next section
   end
 
   -- Unstaged changes section (modified status = M)
@@ -92,8 +95,10 @@ function M.build(data)
   )
   if unstaged then
     table.insert(children, unstaged)
-    current_line = line_after_unstaged + 1
+    current_line = line_after_unstaged
     table.insert(children, ui.text(""))
+    current_line = current_line + 1
+    current_line = current_line + 1
   end
 
   -- Staged changes section (added status = A)
@@ -108,8 +113,9 @@ function M.build(data)
   )
   if staged then
     table.insert(children, staged)
-    current_line = line_after_staged + 1
+    current_line = line_after_staged
     table.insert(children, ui.text(""))
+    current_line = current_line + 1
   end
 
   return ui.col(children), line_map
