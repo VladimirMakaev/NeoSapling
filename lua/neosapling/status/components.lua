@@ -148,8 +148,88 @@ local function build_commits_section(commits, line_map, current_line)
   return section, current_line
 end
 
+--- Build a recent stacks section showing obsolete commits
+---@param commits Commit[] Commits from smartlog
+---@param line_map table<number, Item> Line map to populate
+---@param current_line number Current line number (1-indexed)
+---@return Component|nil, number Recent stacks section (nil if empty) and updated line number
+local function build_recent_stacks_section(commits, line_map, current_line)
+  -- Filter to obsolete commits: graphnode == "x"
+  local obsolete_commits = {}
+  for _, commit in ipairs(commits) do
+    if commit.graphnode == "x" then
+      table.insert(obsolete_commits, commit)
+    end
+  end
+
+  if #obsolete_commits == 0 then
+    return nil, current_line
+  end
+
+  local section_start = current_line
+  line_map[section_start] = { type = "section", id = "Recent Stacks" }
+
+  local commit_rows = {}
+  for _, commit in ipairs(obsolete_commits) do
+    current_line = current_line + 1
+    table.insert(commit_rows, ui.row({
+      ui.text("  x ", { hl = "NeoSaplingHash" }),
+      ui.text(commit.node .. " ", { hl = "NeoSaplingHash" }),
+      ui.text(commit.desc),
+    }))
+    line_map[current_line] = { type = "commit", commit = commit, section = "recent" }
+  end
+
+  local section = ui.fold(
+    ui.row({
+      ui.text("Recent Stacks", { hl = "NeoSaplingSection" }),
+      ui.text(" (" .. #obsolete_commits .. ")"),
+    }),
+    commit_rows,
+    { id = "Recent Stacks", folded = true }
+  )
+
+  return section, current_line
+end
+
+--- Build a bookmarks section
+---@param bookmarks Bookmark[] Bookmarks from sl bookmark
+---@param line_map table<number, Item> Line map to populate
+---@param current_line number Current line number (1-indexed)
+---@return Component|nil, number Bookmarks section (nil if empty) and updated line number
+local function build_bookmarks_section(bookmarks, line_map, current_line)
+  if not bookmarks or #bookmarks == 0 then
+    return nil, current_line
+  end
+
+  local section_start = current_line
+  line_map[section_start] = { type = "section", id = "Bookmarks" }
+
+  local bookmark_rows = {}
+  for _, bookmark in ipairs(bookmarks) do
+    current_line = current_line + 1
+    table.insert(bookmark_rows, ui.row({
+      ui.text("  ", {}),
+      ui.text(bookmark.name, { hl = "NeoSaplingBranch" }),
+      ui.text(" @ " .. bookmark.node, { hl = "NeoSaplingHash" }),
+    }))
+    line_map[current_line] = { type = "bookmark", bookmark = bookmark }
+  end
+
+  local section = ui.fold(
+    ui.row({
+      ui.text("Bookmarks", { hl = "NeoSaplingSection" }),
+      ui.text(" (" .. #bookmarks .. ")"),
+    }),
+    bookmark_rows,
+    { id = "Bookmarks", folded = true }
+  )
+
+  return section, current_line
+end
+
 --- Build status view component tree
----@param data {status: GroupedStatus, commits?: Commit[], expanded_files?: table<string, FileDiff>}
+---@param data {status: GroupedStatus, commits?: Commit[], bookmarks?: Bookmark[], expanded_files?: table<string, FileDiff>}
 ---@return Component, table<number, Item> tree and line mapping
 function M.build(data)
   local line_map = {}
@@ -238,6 +318,34 @@ function M.build(data)
       current_line = line_after_commits
       table.insert(children, ui.text(""))
       current_line = current_line + 1
+    end
+  end
+
+  -- Recent Stacks section (obsolete commits, collapsed by default)
+  if data.commits and #data.commits > 0 then
+    local recent_section, line_after_recent = build_recent_stacks_section(
+      data.commits,
+      line_map,
+      current_line
+    )
+    if recent_section then
+      table.insert(children, recent_section)
+      current_line = line_after_recent
+      table.insert(children, ui.text(""))
+      current_line = current_line + 1
+    end
+  end
+
+  -- Bookmarks section (collapsed by default)
+  if data.bookmarks and #data.bookmarks > 0 then
+    local bookmarks_section, line_after_bookmarks = build_bookmarks_section(
+      data.bookmarks,
+      line_map,
+      current_line
+    )
+    if bookmarks_section then
+      table.insert(children, bookmarks_section)
+      current_line = line_after_bookmarks
     end
   end
 
