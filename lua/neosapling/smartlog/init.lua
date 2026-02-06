@@ -105,7 +105,12 @@ end
 function M.close()
   if smartlog_buffer and smartlog_buffer:is_valid() then
     -- Go to previous buffer BEFORE destroying (Pitfall #1 from RESEARCH.md)
-    vim.cmd("bprevious")
+    -- pcall guards against E85 when smartlog is the only listed buffer
+    local ok = pcall(vim.cmd, "bprevious")
+    if not ok then
+      -- No listed buffer to go back to; create a fresh empty one
+      vim.cmd("enew")
+    end
     smartlog_buffer:destroy()
     smartlog_buffer = nil
   end
