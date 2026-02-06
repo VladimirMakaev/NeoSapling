@@ -115,6 +115,27 @@ function M.pull()
   return CommandBuilder:new(runner):pull()
 end
 
+--- Create an uncommit command builder
+--- Usage: sl.uncommit():call({}, callback)
+---@return CommandBuilder Pre-configured builder with "uncommit" subcommand
+function M.uncommit()
+  return CommandBuilder:new(runner):uncommit()
+end
+
+--- Create an unamend command builder
+--- Usage: sl.unamend():call({}, callback)
+---@return CommandBuilder Pre-configured builder with "unamend" subcommand
+function M.unamend()
+  return CommandBuilder:new(runner):unamend()
+end
+
+--- Create a graft command builder
+--- Usage: sl.graft():rev("abc123"):call({}, callback)
+---@return CommandBuilder Pre-configured builder with "graft" subcommand
+function M.graft()
+  return CommandBuilder:new(runner):graft()
+end
+
 --- Create a bookmark command builder
 --- Usage: sl.bookmarks():template(...):call({}, callback)
 ---@return CommandBuilder Pre-configured builder with "bookmark" subcommand

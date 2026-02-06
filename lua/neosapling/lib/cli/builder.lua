@@ -139,6 +139,24 @@ function CommandBuilder:pull()
   return self:arg("pull")
 end
 
+--- Add "uncommit" subcommand
+---@return CommandBuilder self for chaining
+function CommandBuilder:uncommit()
+  return self:arg("uncommit")
+end
+
+--- Add "unamend" subcommand
+---@return CommandBuilder self for chaining
+function CommandBuilder:unamend()
+  return self:arg("unamend")
+end
+
+--- Add "graft" subcommand
+---@return CommandBuilder self for chaining
+function CommandBuilder:graft()
+  return self:arg("graft")
+end
+
 --- Add "bookmark" subcommand
 ---@return CommandBuilder self for chaining
 function CommandBuilder:bookmark()
