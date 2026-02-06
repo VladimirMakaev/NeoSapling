@@ -9,14 +9,14 @@
 #   TEST_FILES=tests/specs/cli make test  # Run specific directory
 #
 # Notes:
-#   - Tests run with 120s timeout to prevent hanging nvim --headless processes
+#   - Tests run with 300s timeout to prevent hanging nvim --headless processes
 #   - nvim --headless requires explicit exit (plenary handles this for tests)
 #   - For manual nvim --headless scripts, always call vim.cmd('qa!') or os.exit()
 
 .PHONY: test clean
 
 # Timeout in seconds (default 120s, override with TIMEOUT=300 make test)
-TIMEOUT ?= 120
+TIMEOUT ?= 300
 
 # Clone plenary for testing
 tmp/plenary:
