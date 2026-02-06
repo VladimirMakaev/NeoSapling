@@ -148,6 +148,55 @@ local function setup_buffer()
       file_actions.discard(item.file)
     end
   end, { buffer = bufnr, desc = "Discard changes" })
+
+  -- Enter: goto commit or bookmark under cursor
+  vim.keymap.set("n", "<CR>", function()
+    local context = require("neosapling.status.context")
+    local item = context.get_item_at_cursor(line_map)
+    if not item then return end
+    if item.type == "commit" then
+      require("neosapling.actions.stack").goto_commit(item.commit.node)
+    elseif item.type == "bookmark" then
+      require("neosapling.actions.stack").goto_commit(item.bookmark.node)
+    end
+  end, { buffer = bufnr, desc = "Goto commit or bookmark" })
+
+  -- P: pull from remote
+  vim.keymap.set("n", "P", function()
+    require("neosapling.actions.stack").pull()
+  end, { buffer = bufnr, desc = "Pull from remote" })
+
+  -- d: show full file diff or open diff popup for commit
+  vim.keymap.set("n", "d", function()
+    local context = require("neosapling.status.context")
+    local item = context.get_item_at_cursor(line_map)
+    if not item then return end
+    if item.type == "file" then
+      local sl_cli = require("neosapling.lib.cli")
+      sl_cli.diff():arg("--"):arg(item.file.path):call({}, function(result)
+        vim.schedule(function()
+          local lines = result.stdout or {}
+          if #lines == 0 then
+            vim.notify("No diff for " .. item.file.path, vim.log.levels.INFO)
+            return
+          end
+          -- Create vertical split with diff content
+          vim.cmd("vsplit")
+          local buf = vim.api.nvim_create_buf(false, true)
+          vim.api.nvim_set_current_buf(buf)
+          vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+          vim.bo[buf].filetype = "diff"
+          vim.bo[buf].buftype = "nofile"
+          vim.bo[buf].modifiable = false
+          vim.keymap.set("n", "q", function()
+            vim.api.nvim_buf_delete(buf, { force = true })
+          end, { buffer = buf, desc = "Close diff" })
+        end)
+      end)
+    elseif item.type == "commit" then
+      require("neosapling.popups.diff").create(item.commit)
+    end
+  end, { buffer = bufnr, desc = "Show file diff or open diff popup" })
 end
 
 --- Setup folds for status buffer
