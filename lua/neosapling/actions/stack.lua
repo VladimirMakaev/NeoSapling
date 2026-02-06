@@ -54,10 +54,10 @@ function M.amend_no_edit()
   end)
 end
 
---- Amend the current commit interactively (opens editor in terminal).
+--- Amend the current commit interactively using buffer-based editor.
+--- Opens editor pre-filled with current commit message.
 function M.amend_interactive()
-  vim.cmd("!sl amend")
-  schedule_refresh()
+  require("neosapling.commit.editor").open({ amend = true })
 end
 
 --- Preview absorb changes (dry-run mode).

@@ -27,12 +27,10 @@ function M.commit(opts)
   require("neosapling.commit.editor").open({ amend = false })
 end
 
---- Amend the current commit
---- For now, uses terminal command as amend needs existing message loading
---- TODO: Implement buffer-based amend in future phase
+--- Amend the current commit using buffer-based editor
+--- Opens editor pre-filled with current commit message
 function M.amend()
-  vim.cmd("!sl commit --amend")
-  schedule_refresh()
+  require("neosapling.commit.editor").open({ amend = true })
 end
 
 --- Extend the current commit without editing message
