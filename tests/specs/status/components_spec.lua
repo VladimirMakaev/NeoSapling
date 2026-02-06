@@ -194,6 +194,183 @@ describe("components module", function()
       end)
     end)
 
+    describe("virtually staged modified file placement", function()
+      local staged = require("neosapling.status.staged")
+
+      before_each(function()
+        staged.clear()
+      end)
+
+      after_each(function()
+        staged.clear()
+      end)
+
+      it("staged modified files appear in staged section", function()
+        local status = empty_status()
+        status.modified = {
+          { status = "M", path = "changed.lua" },
+        }
+
+        -- Stage the modified file
+        staged.stage("changed.lua")
+
+        local _, line_map = components.build({
+          status = status,
+          commits = {},
+          bookmarks = {},
+        })
+
+        -- Find the file in line_map and check its section
+        local found_in_staged = false
+        local found_in_unstaged = false
+        for _, item in pairs(line_map) do
+          if item.type == "file" and item.file.path == "changed.lua" then
+            if item.section == "staged" then
+              found_in_staged = true
+            elseif item.section == "unstaged" then
+              found_in_unstaged = true
+            end
+          end
+        end
+
+        assert.is_true(found_in_staged, "Staged modified file should appear in staged section")
+        assert.is_false(found_in_unstaged, "Staged modified file should NOT appear in unstaged section")
+      end)
+
+      it("unstaged modified files remain in unstaged section", function()
+        local status = empty_status()
+        status.modified = {
+          { status = "M", path = "changed.lua" },
+        }
+
+        -- Do NOT stage the file
+
+        local _, line_map = components.build({
+          status = status,
+          commits = {},
+          bookmarks = {},
+        })
+
+        local found_in_staged = false
+        local found_in_unstaged = false
+        for _, item in pairs(line_map) do
+          if item.type == "file" and item.file.path == "changed.lua" then
+            if item.section == "staged" then
+              found_in_staged = true
+            elseif item.section == "unstaged" then
+              found_in_unstaged = true
+            end
+          end
+        end
+
+        assert.is_true(found_in_unstaged, "Unstaged modified file should appear in unstaged section")
+        assert.is_false(found_in_staged, "Unstaged modified file should NOT appear in staged section")
+      end)
+
+      it("mixed staged and unstaged modified files are separated correctly", function()
+        local status = empty_status()
+        status.modified = {
+          { status = "M", path = "a.lua" },
+          { status = "M", path = "b.lua" },
+        }
+
+        -- Stage only a.lua
+        staged.stage("a.lua")
+
+        local _, line_map = components.build({
+          status = status,
+          commits = {},
+          bookmarks = {},
+        })
+
+        -- Find both files and check sections
+        local a_section = nil
+        local b_section = nil
+        for _, item in pairs(line_map) do
+          if item.type == "file" then
+            if item.file.path == "a.lua" then
+              a_section = item.section
+            elseif item.file.path == "b.lua" then
+              b_section = item.section
+            end
+          end
+        end
+
+        assert.equals("staged", a_section, "a.lua should be in staged section")
+        assert.equals("unstaged", b_section, "b.lua should be in unstaged section")
+      end)
+
+      it("staged section includes both added and staged modified files", function()
+        local status = empty_status()
+        status.added = {
+          { status = "A", path = "new.lua" },
+        }
+        status.modified = {
+          { status = "M", path = "changed.lua" },
+        }
+
+        -- Stage the modified file
+        staged.stage("changed.lua")
+
+        local tree, line_map = components.build({
+          status = status,
+          commits = {},
+          bookmarks = {},
+        })
+
+        -- Find staged section and count files
+        local staged_files = {}
+        for _, item in pairs(line_map) do
+          if item.type == "file" and item.section == "staged" then
+            table.insert(staged_files, item.file.path)
+          end
+        end
+
+        assert.equals(2, #staged_files, "Staged section should have 2 files")
+
+        -- Check both files are present
+        local has_new = false
+        local has_changed = false
+        for _, path in ipairs(staged_files) do
+          if path == "new.lua" then has_new = true end
+          if path == "changed.lua" then has_changed = true end
+        end
+        assert.is_true(has_new, "Staged section should include added file")
+        assert.is_true(has_changed, "Staged section should include staged modified file")
+      end)
+
+      it("staged section count reflects both added and staged modified", function()
+        local status = empty_status()
+        status.added = {
+          { status = "A", path = "new.lua" },
+        }
+        status.modified = {
+          { status = "M", path = "changed.lua" },
+        }
+
+        staged.stage("changed.lua")
+
+        local tree, _ = components.build({
+          status = status,
+          commits = {},
+          bookmarks = {},
+        })
+
+        -- Find staged fold and check its header shows count of 2
+        local staged_fold = nil
+        for _, child in ipairs(tree.children) do
+          if child.tag == "fold" and child.options and child.options.id == "staged" then
+            staged_fold = child
+            break
+          end
+        end
+
+        assert.is_not_nil(staged_fold, "Should have staged section")
+        -- Staged fold should have header + 2 files = 3 children
+        assert.equals(3, #staged_fold.children, "Staged section should have 3 children (header + 2 files)")
+      end)
+    end)
+
     describe("Current Stack section", function()
       it("creates Current Stack section for commits", function()
         local tree, _ = components.build({
