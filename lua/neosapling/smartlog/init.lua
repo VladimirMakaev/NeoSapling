@@ -12,6 +12,7 @@ local M = {}
 local smartlog_buffer = nil
 local current_data = nil
 local line_map = {}
+local diff_buffer = nil
 
 -- Version token for preventing stale data from async operations
 local current_version = nil
@@ -37,13 +38,14 @@ local function setup_buffer()
     require("neosapling.popups.help").create()
   end, { buffer = bufnr, desc = "Open help popup" })
 
-  -- d opens diff popup (placeholder - implemented in Plan 06-03)
+  -- d opens diff popup
   vim.keymap.set("n", "d", function()
     local lnum = vim.fn.line(".")
     local item = line_map[lnum]
     if item and item.type == "commit" then
-      -- Diff popup will be implemented in 06-03
-      vim.notify("Diff popup coming in next plan", vim.log.levels.INFO)
+      require("neosapling.popups.diff").create(item.commit)
+    else
+      vim.notify("No commit under cursor", vim.log.levels.INFO)
     end
   end, { buffer = bufnr, desc = "Open diff popup" })
 end
@@ -115,6 +117,140 @@ end
 ---@return table<number, Item>
 function M.get_line_map()
   return line_map
+end
+
+--- Setup keymaps for diff buffer
+function M._setup_diff_buffer_keymaps()
+  if not diff_buffer or not diff_buffer:is_valid() then
+    return
+  end
+
+  local bufnr = diff_buffer.handle
+
+  -- q closes diff buffer
+  vim.keymap.set("n", "q", function()
+    if diff_buffer and diff_buffer:is_valid() then
+      diff_buffer:destroy()
+      diff_buffer = nil
+    end
+  end, { buffer = bufnr, desc = "Close diff buffer" })
+end
+
+--- Display diff in a split buffer
+---@param diffs FileDiff[] Parsed diff data
+---@param commit CommitExtended The commit being diffed
+---@param diff_type string Description of diff type (e.g., "vs parent", "vs working copy")
+function M._show_diff_buffer(diffs, commit, diff_type)
+  -- Clean up previous diff buffer (Pitfall #5)
+  if diff_buffer and diff_buffer:is_valid() then
+    diff_buffer:destroy()
+  end
+
+  diff_buffer = ui.Buffer:new("neosapling://diff/" .. commit.node:sub(1, 7))
+
+  local lines = {}
+  local highlights = {}
+  local line_num = 0
+
+  -- Header
+  table.insert(lines, "Diff for " .. commit.node:sub(1, 7) .. " " .. diff_type)
+  table.insert(highlights, {
+    line = line_num,
+    col_start = 0,
+    col_end = #lines[1],
+    hl = "NeoSaplingHeader",
+  })
+  line_num = line_num + 1
+  table.insert(lines, commit.desc)
+  line_num = line_num + 1
+  table.insert(lines, "")
+  line_num = line_num + 1
+
+  if #diffs == 0 then
+    table.insert(lines, "No changes")
+    diff_buffer:set_lines(lines)
+    diff_buffer:show("split")
+    M._setup_diff_buffer_keymaps()
+    return
+  end
+
+  for _, file_diff in ipairs(diffs) do
+    -- File header
+    local from_line = "--- " .. (file_diff.from_path or "/dev/null")
+    table.insert(lines, from_line)
+    table.insert(highlights, {
+      line = line_num,
+      col_start = 0,
+      col_end = #from_line,
+      hl = "NeoSaplingHash",
+    })
+    line_num = line_num + 1
+
+    local to_line = "+++ " .. (file_diff.to_path or "/dev/null")
+    table.insert(lines, to_line)
+    table.insert(highlights, {
+      line = line_num,
+      col_start = 0,
+      col_end = #to_line,
+      hl = "NeoSaplingHash",
+    })
+    line_num = line_num + 1
+
+    for _, hunk in ipairs(file_diff.hunks or {}) do
+      -- Hunk header
+      local hunk_header = string.format(
+        "@@ -%d,%d +%d,%d @@%s",
+        hunk.old_start or 0, hunk.old_count or 0,
+        hunk.new_start or 0, hunk.new_count or 0,
+        hunk.header and (" " .. hunk.header) or ""
+      )
+      table.insert(lines, hunk_header)
+      table.insert(highlights, {
+        line = line_num,
+        col_start = 0,
+        col_end = #hunk_header,
+        hl = "NeoSaplingSection",
+      })
+      line_num = line_num + 1
+
+      -- Diff lines
+      for _, diff_line in ipairs(hunk.lines or {}) do
+        table.insert(lines, diff_line)
+        local hl = nil
+        if diff_line:sub(1, 1) == "+" then
+          hl = "DiffAdd"
+        elseif diff_line:sub(1, 1) == "-" then
+          hl = "DiffDelete"
+        end
+        if hl then
+          table.insert(highlights, {
+            line = line_num,
+            col_start = 0,
+            col_end = #diff_line,
+            hl = hl,
+          })
+        end
+        line_num = line_num + 1
+      end
+    end
+
+    table.insert(lines, "")
+    line_num = line_num + 1
+  end
+
+  diff_buffer:set_lines(lines)
+  diff_buffer:clear_highlights()
+  for _, hl in ipairs(highlights) do
+    diff_buffer:add_highlight(hl.line, hl.col_start, hl.col_end, hl.hl)
+  end
+
+  -- Show in split
+  diff_buffer:show("split")
+
+  -- Set filetype for syntax
+  vim.bo[diff_buffer.handle].filetype = "diff"
+
+  M._setup_diff_buffer_keymaps()
 end
 
 return M
