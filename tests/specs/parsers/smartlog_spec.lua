@@ -210,6 +210,89 @@ describe("smartlog parser", function()
     end)
   end)
 
+  describe("extended parsing", function()
+    describe("TEMPLATE_EXTENDED", function()
+      it("includes p1node and p2node", function()
+        assert.truthy(smartlog.TEMPLATE_EXTENDED:find("p1node"))
+        assert.truthy(smartlog.TEMPLATE_EXTENDED:find("p2node"))
+      end)
+    end)
+
+    describe("parse_line_extended", function()
+      it("parses commit with parent", function()
+        local line = "abc123456789|@|user|5 minutes ago|Test commit|main|def456789012|000000000000"
+        local commit = smartlog.parse_line_extended(line)
+
+        assert.are.equal("abc123456789", commit.node)
+        assert.are.equal("@", commit.graphnode)
+        assert.are.equal("user", commit.author)
+        assert.are.equal("5 minutes ago", commit.date)
+        assert.are.equal("Test commit", commit.desc)
+        assert.are.same({"main"}, commit.bookmarks)
+        assert.are.equal("def456789012", commit.p1node)
+        assert.is_nil(commit.p2node) -- zeros converted to nil
+      end)
+
+      it("parses root commit (no parent)", function()
+        local line = "abc123456789|o|user|1 day ago|Initial commit||000000000000|000000000000"
+        local commit = smartlog.parse_line_extended(line)
+
+        assert.is_nil(commit.p1node)
+        assert.is_nil(commit.p2node)
+      end)
+
+      it("parses merge commit (two parents)", function()
+        local line = "abc123456789|o|user|2 hours ago|Merge commit||def456789012|ghi789012345"
+        local commit = smartlog.parse_line_extended(line)
+
+        assert.are.equal("def456789012", commit.p1node)
+        assert.are.equal("ghi789012345", commit.p2node)
+      end)
+
+      it("returns nil for empty line", function()
+        assert.is_nil(smartlog.parse_line_extended(""))
+        assert.is_nil(smartlog.parse_line_extended(nil))
+      end)
+
+      it("returns nil for malformed line (too few fields)", function()
+        assert.is_nil(smartlog.parse_line_extended("abc|@|user"))
+      end)
+    end)
+
+    describe("parse_extended", function()
+      it("parses multiple commits", function()
+        local lines = {
+          "abc123456789|@|user|5m|Commit 1|main|def456789012|000000000000",
+          "def456789012|o|user|10m|Commit 2||000000000000|000000000000",
+        }
+        local commits = smartlog.parse_extended(lines)
+
+        assert.are.equal(2, #commits)
+        assert.are.equal("abc123456789", commits[1].node)
+        assert.are.equal("def456789012", commits[1].p1node)
+        assert.are.equal("def456789012", commits[2].node)
+        assert.is_nil(commits[2].p1node)
+      end)
+
+      it("handles empty input", function()
+        assert.are.same({}, smartlog.parse_extended({}))
+        assert.are.same({}, smartlog.parse_extended(nil))
+      end)
+
+      it("skips malformed lines", function()
+        local lines = {
+          "abc123456789|@|user|5m|Commit 1|main|def456789012|000000000000",
+          "", -- empty line
+          "malformed",
+          "def456789012|o|user|10m|Commit 2||000000000000|000000000000",
+        }
+        local commits = smartlog.parse_extended(lines)
+
+        assert.are.equal(2, #commits)
+      end)
+    end)
+  end)
+
   describe("integration with real sl", function()
     local harness = require("tests.util.sapling_harness")
 
