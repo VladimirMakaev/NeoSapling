@@ -42,9 +42,9 @@ function M._diff_vs_parent(commit)
     return
   end
 
+  vim.notify("Loading diff vs parent...", vim.log.levels.INFO)
+
   -- Diff: show changes introduced by this commit
-  -- Use -c flag for "changes in this commit" or -r "p1node::node"
-  -- The proper rev spec for "changes in commit X" is: -r "X^::X" or just -c X
   neosapling.sl.diff({ rev = commit.node }, function(diffs, err)
     if err then
       vim.notify("Diff failed: " .. err, vim.log.levels.ERROR)
@@ -62,6 +62,8 @@ end
 function M._diff_vs_working(commit)
   local neosapling = require("neosapling")
   local smartlog = require("neosapling.smartlog")
+
+  vim.notify("Loading diff vs working copy...", vim.log.levels.INFO)
 
   -- Diff working copy against commit: what has changed since that commit
   neosapling.sl.diff({ rev = commit.node }, function(diffs, err)
