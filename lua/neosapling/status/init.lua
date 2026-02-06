@@ -344,12 +344,14 @@ function M.open()
   end
 
   status_buffer:show("split")
+  require("neosapling.lib.watcher").notify_open("status")
   is_initial_open = true
   M.refresh()
 end
 
 --- Close the status buffer
 function M.close()
+  require("neosapling.lib.watcher").notify_close("status")
   if status_buffer and status_buffer:is_valid() then
     status_buffer:destroy()
     status_buffer = nil

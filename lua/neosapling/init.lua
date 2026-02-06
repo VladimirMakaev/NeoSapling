@@ -31,6 +31,9 @@ function M.setup(opts)
   -- Setup highlights
   require("neosapling.lib.ui.highlights").setup()
 
+  -- Early Watchman detection (caches availability for later use)
+  require("neosapling.lib.watcher").is_available()
+
   -- Register user commands
   vim.api.nvim_create_user_command("NeoSapling", function()
     require("neosapling.status").open()

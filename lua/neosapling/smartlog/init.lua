@@ -164,11 +164,13 @@ function M.open()
 
   -- Show full-screen (take over current window)
   smartlog_buffer:show("current")
+  require("neosapling.lib.watcher").notify_open("smartlog")
   M.refresh()
 end
 
 --- Close the smartlog buffer
 function M.close()
+  require("neosapling.lib.watcher").notify_close("smartlog")
   if smartlog_buffer and smartlog_buffer:is_valid() then
     -- Restore the buffer the user had before opening smartlog
     if prev_bufnr and vim.api.nvim_buf_is_valid(prev_bufnr) then
