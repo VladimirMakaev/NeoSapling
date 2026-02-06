@@ -210,6 +210,62 @@ describe("smartlog parser", function()
     end)
   end)
 
+  describe("graph prefix handling", function()
+    it("parse_line strips graph prefix from node field", function()
+      local line = "  o  abc123456789|o|user|now|desc|"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123456789", result.node)
+      assert.equals("o", result.graphnode)
+    end)
+
+    it("parse_line strips @ graph prefix", function()
+      local line = "  @  abc123456789|@|user|now|Current commit|main"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123456789", result.node)
+      assert.equals("@", result.graphnode)
+      assert.equals("main", result.bookmarks[1])
+    end)
+
+    it("parse_line handles clean input (no graph prefix) unchanged", function()
+      local line = "abc123456789|o|user|now|desc|"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123456789", result.node)
+    end)
+
+    it("parse_line_extended strips graph prefix", function()
+      local line = "  o  abc123456789|o|user|5m|Commit msg|main|def456789012|000000000000"
+      local result = smartlog.parse_line_extended(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123456789", result.node)
+      assert.equals("def456789012", result.p1node)
+      assert.is_nil(result.p2node)
+    end)
+
+    it("parse_line_extended strips @ graph prefix with full fields", function()
+      local line = "  @  abc123456789|@|user|now|desc||def456789012|ghi789012345"
+      local result = smartlog.parse_line_extended(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123456789", result.node)
+      assert.equals("@", result.graphnode)
+    end)
+
+    it("parse_line handles graph-only line (no hash) gracefully", function()
+      local result1 = smartlog.parse_line("  |  ")
+      assert.is_nil(result1)
+
+      local result2 = smartlog.parse_line("  |")
+      assert.is_nil(result2)
+    end)
+  end)
+
   describe("extended parsing", function()
     describe("TEMPLATE_EXTENDED", function()
       it("includes p1node and p2node", function()
