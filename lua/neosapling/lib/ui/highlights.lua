@@ -35,6 +35,16 @@ local highlight_groups = {
   NeoSaplingPopupTitle = { bold = true, link = "Title" },
   NeoSaplingPopupHeading = { bold = true, link = "Statement" },
   NeoSaplingPopupKey = { link = "Special" },
+
+  -- Staging status
+  NeoSaplingStaged = { link = "DiffAdd" }, -- Staged files
+  NeoSaplingUnstaged = { link = "DiffChange" }, -- Unstaged modified files
+
+  -- Smartlog commit indicators
+  NeoSaplingCurrent = { bold = true, link = "Special" }, -- Current commit (@)
+  NeoSaplingObsolete = { link = "Comment" }, -- Obsolete commits (x)
+  NeoSaplingAuthor = { link = "Comment" }, -- Commit author
+  NeoSaplingDate = { link = "Comment" }, -- Commit date
 }
 
 --- Check if a highlight group is already defined by user
