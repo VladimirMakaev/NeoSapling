@@ -192,7 +192,8 @@ local function setup_buffer()
           vim.bo[buf].buftype = "nofile"
           vim.bo[buf].modifiable = false
           vim.keymap.set("n", "q", function()
-            vim.api.nvim_buf_delete(buf, { force = true })
+            local win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_close(win, true)
           end, { buffer = buf, desc = "Close diff" })
         end)
       end)
