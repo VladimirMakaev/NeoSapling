@@ -266,6 +266,126 @@ describe("smartlog parser", function()
     end)
   end)
 
+  describe("strip_graph_prefix edge cases", function()
+    -- These tests cover Unicode box-drawing characters used by Sapling in
+    -- multi-branch graph rendering, and hex-valid graph characters (o, x)
+    -- that could be consumed from the start of a hash.
+
+    it("handles Unicode vertical line prefix (U+2502)", function()
+      -- U+2502 = "│" (BOX DRAWINGS LIGHT VERTICAL)
+      local line = "\xe2\x94\x82 o  abc123def456|o|user|5m|desc|"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123def456", result.node)
+      assert.equals("o", result.graphnode)
+    end)
+
+    it("handles Unicode branch characters (U+256D, U+2500, U+256F)", function()
+      -- U+256D = "╭", U+2500 = "─", U+256F = "╯"
+      local line = "\xe2\x95\xad\xe2\x94\x80\xe2\x95\xaf o  abc123def456|o|user|5m|desc|"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123def456", result.node)
+      assert.equals("o", result.graphnode)
+    end)
+
+    it("preserves leading 'a' in hash after graph prefix with 'o'", function()
+      -- 'o' is a graph node char but NOT a hex digit. The hash starts with 'a'
+      -- (a valid hex digit). The old greedy regex could consume 'a' from the
+      -- hash if it were added to the graph char class. The new approach finds
+      -- the 12-hex-char + pipe pattern, so it is immune to this.
+      local line = "  o  a1b2c3d4e5f6|o|user|5m|desc|"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("a1b2c3d4e5f6", result.node)
+    end)
+
+    it("handles graph prefix with 'x' graphnode and hex-starting hash", function()
+      -- 'x' is a graph node char (obsolete) but NOT a hex digit.
+      -- Hash starts with 'f' which IS hex-valid.
+      local line = "  x  f1a2b3c4d5e6|x|user|5m|desc|"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("f1a2b3c4d5e6", result.node)
+    end)
+
+    it("handles multi-column graph with multiple Unicode vertical bars", function()
+      -- Multiple │ characters for multi-branch graph
+      local line = "\xe2\x94\x82 \xe2\x94\x82 o  abc123def456|o|user|5m|desc|"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123def456", result.node)
+      assert.equals("o", result.graphnode)
+    end)
+
+    it("handles Unicode prefix with parse_line_extended", function()
+      -- Unicode vertical bar with extended template (8 fields)
+      local line = "\xe2\x94\x82 o  abc123def456|o|user|5m|desc|main|def456789012|000000000000"
+      local result = smartlog.parse_line_extended(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123def456", result.node)
+      assert.equals("o", result.graphnode)
+      assert.equals("def456789012", result.p1node)
+      assert.is_nil(result.p2node)
+    end)
+
+    it("handles complex Unicode graph with @ marker", function()
+      -- U+2577 = "╷" (BOX DRAWINGS LIGHT DOWN), mixed with spaces and @
+      local line = "\xe2\x95\xb7 @  abc123def456|@|user|now|Current commit|main"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("abc123def456", result.node)
+      assert.equals("@", result.graphnode)
+      assert.equals("main", result.bookmarks[1])
+    end)
+
+    it("node is exactly 12 hex chars after stripping Unicode prefix", function()
+      local line = "\xe2\x94\x82 o  a1b2c3d4e5f6|o|user|5m|desc|"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals(12, #result.node)
+      assert.truthy(result.node:match("^%x+$"), "Node should be pure hex, got: " .. result.node)
+    end)
+
+    it("handles hash starting with 'a' after Unicode prefix", function()
+      -- 'a' is hex-valid and could theoretically be in graph prefix
+      local line = "\xe2\x94\x82 o  aabbccddeeff|o|user|5m|desc|"
+      local result = smartlog.parse_line(line)
+
+      assert.is_not_nil(result)
+      assert.equals("aabbccddeeff", result.node)
+    end)
+
+    it("parse with mixed ASCII and Unicode graph lines", function()
+      -- Simulate a multi-branch smartlog with both ASCII and Unicode prefixes
+      local lines = {
+        "  @  abc123456789|@|user|1m|Current commit|",
+        "\xe2\x94\x82 o  def456789012|o|user|5m|Branch commit|feature",
+        "\xe2\x95\xad\xe2\x94\x80\xe2\x95\xaf o  aab123456789|o|user|10m|Base commit|main",
+      }
+      local result = smartlog.parse(lines)
+
+      assert.equals(3, #result)
+      assert.equals("abc123456789", result[1].node)
+      assert.equals("def456789012", result[2].node)
+      assert.equals("aab123456789", result[3].node)
+
+      -- All nodes should be clean hex
+      for _, commit in ipairs(result) do
+        assert.truthy(commit.node:match("^%x+$"),
+          "Node should be clean hex, got: " .. commit.node)
+      end
+    end)
+  end)
+
   describe("extended parsing", function()
     describe("TEMPLATE_EXTENDED", function()
       it("includes p1node and p2node", function()
