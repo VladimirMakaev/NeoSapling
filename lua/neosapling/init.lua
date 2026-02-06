@@ -115,6 +115,25 @@ function M.sl.smartlog(callback)
   end)
 end
 
+--- Get extended smartlog with parent data asynchronously
+---
+--- Runs `sl smartlog -T TEMPLATE_EXTENDED` and parses output with parent node data.
+--- Extended commits include p1node and p2node fields for parent relationships.
+---
+---@param callback fun(commits: CommitExtended[]|nil, err: string|nil)
+---@return vim.SystemObj|nil Handle for cancellation
+function M.sl.smartlog_extended(callback)
+  cli.smartlog():template(parsers.smartlog.TEMPLATE_EXTENDED):call({}, function(result)
+    if result.code ~= 0 then
+      callback(nil, "sl smartlog failed: " .. table.concat(result.stderr, "\n"))
+      return
+    end
+
+    local commits = parsers.smartlog.parse_extended(result.stdout)
+    callback(commits, nil)
+  end)
+end
+
 --- Get bookmarks asynchronously
 ---
 --- Runs `sl bookmark -T TEMPLATE` and parses the output into bookmark objects.
