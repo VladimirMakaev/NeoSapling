@@ -245,6 +245,26 @@ function M.build(data)
   local current_line = 1
   local expanded_files = data.expanded_files or {}
 
+  -- Separate modified files into staged vs unstaged
+  local unstaged_modified = {}
+  local staged_modified = {}
+  for _, file in ipairs(data.status.modified or {}) do
+    if staged.is_staged(file.path) then
+      table.insert(staged_modified, file)
+    else
+      table.insert(unstaged_modified, file)
+    end
+  end
+
+  -- Combine added files + staged modified files for Staged section
+  local all_staged = {}
+  for _, file in ipairs(data.status.added or {}) do
+    table.insert(all_staged, file)
+  end
+  for _, file in ipairs(staged_modified) do
+    table.insert(all_staged, file)
+  end
+
   local children = {}
 
   -- Header
@@ -277,10 +297,10 @@ function M.build(data)
     current_line = current_line + 1  -- For col's new_line before next section
   end
 
-  -- Unstaged changes section (modified status = M)
+  -- Unstaged changes section (modified files not virtually staged)
   local unstaged, line_after_unstaged = build_section(
     "Unstaged changes",
-    data.status.modified,
+    unstaged_modified,
     "M",
     "NeoSaplingUnstaged",
     "unstaged",
@@ -296,10 +316,10 @@ function M.build(data)
     current_line = current_line + 1
   end
 
-  -- Staged changes section (added status = A)
-  local staged, line_after_staged = build_section(
+  -- Staged changes section (added files + virtually staged modified files)
+  local staged_section, line_after_staged = build_section(
     "Staged changes",
-    data.status.added,
+    all_staged,
     "A",
     "NeoSaplingStaged",
     "staged",
@@ -307,8 +327,8 @@ function M.build(data)
     current_line,
     expanded_files
   )
-  if staged then
-    table.insert(children, staged)
+  if staged_section then
+    table.insert(children, staged_section)
     current_line = line_after_staged
     table.insert(children, ui.text(""))
     current_line = current_line + 1
