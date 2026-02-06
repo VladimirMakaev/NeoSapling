@@ -36,6 +36,10 @@ function M.setup(opts)
     require("neosapling.status").open()
   end, { desc = "Open NeoSapling status view" })
 
+  vim.api.nvim_create_user_command("NeoSaplingLog", function()
+    require("neosapling.smartlog").open()
+  end, { desc = "Open NeoSapling smartlog view" })
+
   return true
 end
 
