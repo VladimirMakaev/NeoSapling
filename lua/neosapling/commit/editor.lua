@@ -87,10 +87,10 @@ local function execute_commit(buf, files)
         buf:destroy()
         active_commit_buf = nil
 
-        -- Refresh status
+        -- Re-show status buffer (opens/shows AND refreshes data)
         local ok, status = pcall(require, "neosapling.status")
-        if ok and status.refresh then
-          status.refresh()
+        if ok and status.open then
+          status.open()  -- Opens/shows buffer AND refreshes data
         end
 
         vim.notify("Commit created", vim.log.levels.INFO)
