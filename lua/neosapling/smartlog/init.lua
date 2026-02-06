@@ -13,6 +13,7 @@ local smartlog_buffer = nil
 local current_data = nil
 local line_map = {}
 local diff_buffer = nil
+local prev_bufnr = nil
 
 -- Version token for preventing stale data from async operations
 local current_version = nil
@@ -90,6 +91,9 @@ end
 
 --- Open the smartlog buffer (full-screen in current window)
 function M.open()
+  -- Save the current buffer so we can restore it on close
+  prev_bufnr = vim.api.nvim_get_current_buf()
+
   -- Create or get existing buffer
   if not smartlog_buffer or not smartlog_buffer:is_valid() then
     smartlog_buffer = ui.Buffer:new("neosapling://smartlog")
@@ -104,16 +108,17 @@ end
 --- Close the smartlog buffer
 function M.close()
   if smartlog_buffer and smartlog_buffer:is_valid() then
-    -- Go to previous buffer BEFORE destroying (Pitfall #1 from RESEARCH.md)
-    -- pcall guards against E85 when smartlog is the only listed buffer
-    local ok = pcall(vim.cmd, "bprevious")
-    if not ok then
-      -- No listed buffer to go back to; create a fresh empty one
+    -- Restore the buffer the user had before opening smartlog
+    if prev_bufnr and vim.api.nvim_buf_is_valid(prev_bufnr) then
+      vim.api.nvim_set_current_buf(prev_bufnr)
+    else
+      -- Fallback: create a fresh empty buffer
       vim.cmd("enew")
     end
     smartlog_buffer:destroy()
     smartlog_buffer = nil
   end
+  prev_bufnr = nil
   current_data = nil
   line_map = {}
 end
