@@ -1,5 +1,5 @@
 --- Commit popup for NeoSapling.
---- Provides commit, amend, and extend actions.
+--- Provides commit, amend, extend, uncommit, unamend, and absorb actions.
 --- @module neosapling.popups.commit
 
 local popup = require("neosapling.popups.builder")
@@ -18,6 +18,11 @@ function M.create()
     :group("Edit HEAD")
       :action("a", "Amend", actions.amend)
       :action("e", "Extend (no edit)", actions.extend)
+    :group("Absorb")
+      :action("A", "Absorb changes into stack", actions.absorb)
+    :group("Undo")
+      :action("u", "Uncommit", actions.uncommit)
+      :action("U", "Unamend", actions.unamend)
     :group()
       :action("q", "Close", function() end)
       :action("<Esc>", "Close", function() end)
