@@ -19,6 +19,9 @@ local expanded_files = {}  -- path -> FileDiff cache
 local fold_level_cache = {}
 local cache_valid = false
 
+-- Track initial open vs refresh to avoid re-collapsing default-collapsed sections
+local is_initial_open = false
+
 --- Global foldexpr function (must be global for v:lua access)
 ---@param lnum number Line number (1-indexed)
 ---@return string Fold level expression
@@ -242,6 +245,13 @@ function M._render()
     return
   end
 
+  -- Save cursor position before render
+  local win = vim.fn.bufwinid(status_buffer.handle)
+  local cursor = nil
+  if win ~= -1 then
+    cursor = vim.api.nvim_win_get_cursor(win)
+  end
+
   -- Invalidate fold cache before render
   cache_valid = false
 
@@ -267,8 +277,18 @@ function M._render()
   -- Setup folds
   setup_folds(result.folds)
 
-  -- Close sections that should be collapsed by default
-  close_default_collapsed(result.folds)
+  -- Close sections that should be collapsed by default (only on initial open)
+  if is_initial_open then
+    close_default_collapsed(result.folds)
+    is_initial_open = false
+  end
+
+  -- Restore cursor position after render
+  if cursor and win ~= -1 and vim.api.nvim_win_is_valid(win) then
+    local line_count = vim.api.nvim_buf_line_count(status_buffer.handle)
+    cursor[1] = math.min(cursor[1], line_count)
+    vim.api.nvim_win_set_cursor(win, cursor)
+  end
 end
 
 -- Version token for preventing stale data from async operations
@@ -323,6 +343,7 @@ function M.open()
   end
 
   status_buffer:show("split")
+  is_initial_open = true
   M.refresh()
 end
 
@@ -337,6 +358,7 @@ function M.close()
   fold_regions = {}
   expanded_files = {}
   cache_valid = false
+  is_initial_open = false
 end
 
 --- Get the current line map (for context module)
