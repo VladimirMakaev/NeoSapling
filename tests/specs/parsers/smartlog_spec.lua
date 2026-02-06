@@ -377,11 +377,59 @@ describe("smartlog parser", function()
         local commit = result[1]
         assert.is_string(commit.node)
         assert.is_true(#commit.node > 0, "Node should not be empty")
+        assert.truthy(commit.node:match("^%x+$"), "Node should be clean hex hash, got: " .. commit.node)
         assert.is_string(commit.graphnode)
         assert.is_string(commit.author)
         assert.is_string(commit.date)
         assert.is_string(commit.desc)
         assert.is_table(commit.bookmarks)
+      end)
+    end)
+
+    it("produces clean hashes usable by sl diff", function()
+      if not harness.sl_available() then
+        pending("sl not available")
+        return
+      end
+
+      harness.in_repo_with_commit(function(repo_path)
+        local cwd = vim.fn.getcwd()
+        vim.fn.chdir(repo_path)
+
+        -- Parse smartlog to get a commit hash
+        local sl_output = vim.fn.system({ "sl", "smartlog", "-T", smartlog.TEMPLATE_EXTENDED })
+        local sl_lines = vim.split(sl_output, "\n", { plain = true })
+        local commits = smartlog.parse_extended(sl_lines)
+
+        assert.is_true(#commits >= 1, "Should have at least one commit")
+        local commit = commits[1]
+
+        -- Validate node is clean hex
+        assert.truthy(commit.node:match("^%x+$"), "Node should be clean hex, got: " .. tostring(commit.node))
+
+        -- Use the parsed hash to run sl diff (the exact flow that was broken)
+        -- Create a change first so diff has output
+        vim.fn.writefile({ "Modified for diff test" }, repo_path .. "/test.txt")
+
+        local diff_output = vim.fn.system({ "sl", "diff", "-r", commit.node, "--git" })
+        local diff_lines = vim.split(diff_output, "\n", { plain = true })
+
+        -- sl diff should NOT error (shell_error == 0)
+        assert.equals(0, vim.v.shell_error, "sl diff should succeed with parsed hash")
+
+        -- Parse diff output
+        local diff_parser = require("neosapling.lib.parsers.diff")
+        local diffs = diff_parser.parse(diff_lines)
+        assert.is_table(diffs)
+        assert.is_true(#diffs >= 1, "Should have at least one file diff")
+
+        -- Validate diff structure
+        local file_diff = diffs[1]
+        assert.is_string(file_diff.from_path)
+        assert.is_table(file_diff.hunks)
+        assert.is_true(#file_diff.hunks >= 1, "Should have at least one hunk")
+
+        vim.fn.chdir(cwd)
       end)
     end)
   end)
