@@ -5,4 +5,5 @@
 return {
   file = require("neosapling.actions.file"),
   stack = require("neosapling.actions.stack"),
+  hunk = require("neosapling.actions.hunk"),
 }
