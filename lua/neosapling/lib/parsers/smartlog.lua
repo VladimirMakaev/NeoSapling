@@ -41,6 +41,25 @@ M.TEMPLATE_EXTENDED = table.concat({
 ---@field p1node string|nil First parent node (nil if no parent or root commit)
 ---@field p2node string|nil Second parent node (nil if no merge)
 
+--- Strip graph rendering prefix from sl smartlog output lines.
+--- sl smartlog prepends graph characters (spaces, @, o, x, |, /, \) before
+--- the template output. Since the first template field is {node|short} (a hex hash),
+--- we strip the leading graph prefix which consists only of known graph
+--- characters: spaces, @, o, x, |, /, \, and similar drawing characters.
+--- Lines that already start with a hex digit pass through unchanged.
+---@param line string Raw line from sl smartlog
+---@return string Line with graph prefix stripped
+local function strip_graph_prefix(line)
+  -- If line already starts with a hex character, no prefix to strip
+  if line:match("^%x") then
+    return line
+  end
+  -- Strip leading graph-rendering characters only (space, @, o, x, |, /, \, ., ~)
+  -- These are the characters sl uses for graph drawing
+  local stripped = line:match("^[ @ox|/\\.~]*(%x.*)$")
+  return stripped or line
+end
+
 ---Parse a single smartlog line
 ---
 ---@param line string Single line of template output
@@ -50,6 +69,9 @@ function M.parse_line(line)
   if not line or line == "" then
     return nil
   end
+
+  -- Strip graph rendering prefix before parsing
+  line = strip_graph_prefix(line)
 
   local parts = vim.split(line, "|", { plain = true })
 
@@ -105,6 +127,9 @@ function M.parse_line_extended(line)
   if not line or line == "" then
     return nil
   end
+
+  -- Strip graph rendering prefix before parsing
+  line = strip_graph_prefix(line)
 
   local parts = vim.split(line, "|", { plain = true })
 
