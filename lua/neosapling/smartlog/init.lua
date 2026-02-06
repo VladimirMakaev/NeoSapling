@@ -49,6 +49,68 @@ local function setup_buffer()
       vim.notify("No commit under cursor", vim.log.levels.INFO)
     end
   end, { buffer = bufnr, desc = "Open diff popup" })
+
+  -- Enter: goto commit under cursor
+  vim.keymap.set("n", "<CR>", function()
+    local item = line_map[vim.fn.line(".")]
+    if item and item.type == "commit" then
+      require("neosapling.actions.stack").goto_commit(item.commit.node)
+    end
+  end, { buffer = bufnr, desc = "Goto commit" })
+
+  -- H: hide commit with confirmation
+  vim.keymap.set("n", "H", function()
+    local item = line_map[vim.fn.line(".")]
+    if not item or item.type ~= "commit" then return end
+    local node = item.commit.node
+    local prompt
+    if item.commit.graphnode == "@" then
+      prompt = "Hide current commit? This will checkout parent."
+    else
+      prompt = "Hide commit " .. node:sub(1, 7) .. "?"
+    end
+    local choice = vim.fn.confirm(prompt, "&Yes\n&No", 2)
+    if choice == 1 then
+      require("neosapling.actions.stack").hide(node)
+    end
+  end, { buffer = bufnr, desc = "Hide commit" })
+
+  -- P: pull from remote
+  vim.keymap.set("n", "P", function()
+    require("neosapling.actions.stack").pull()
+  end, { buffer = bufnr, desc = "Pull from remote" })
+
+  -- c: open commit popup
+  vim.keymap.set("n", "c", function()
+    require("neosapling.popups.commit").create()
+  end, { buffer = bufnr, desc = "Open commit popup" })
+
+  -- G: graft commit with confirmation
+  vim.keymap.set("n", "G", function()
+    local item = line_map[vim.fn.line(".")]
+    if not item or item.type ~= "commit" then return end
+    local node = item.commit.node
+    local choice = vim.fn.confirm("Graft commit " .. node:sub(1, 7) .. " to current location?", "&Yes\n&No", 2)
+    if choice == 1 then
+      require("neosapling.actions.stack").graft(node)
+    end
+  end, { buffer = bufnr, desc = "Graft commit" })
+
+  -- U: unhide commit
+  vim.keymap.set("n", "U", function()
+    local item = line_map[vim.fn.line(".")]
+    if not item or item.type ~= "commit" then return end
+    require("neosapling.actions.stack").unhide(item.commit.node)
+  end, { buffer = bufnr, desc = "Unhide commit" })
+
+  -- r: rebase with destination prompt
+  vim.keymap.set("n", "r", function()
+    vim.ui.input({ prompt = "Rebase destination: " }, function(dest)
+      if dest and dest ~= "" then
+        require("neosapling.actions.stack").rebase(dest)
+      end
+    end)
+  end, { buffer = bufnr, desc = "Rebase" })
 end
 
 --- Internal: Render current data to buffer
