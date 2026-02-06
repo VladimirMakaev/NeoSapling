@@ -42,10 +42,17 @@ M.TEMPLATE_EXTENDED = table.concat({
 ---@field p2node string|nil Second parent node (nil if no merge)
 
 --- Strip graph rendering prefix from sl smartlog output lines.
---- sl smartlog prepends graph characters (spaces, @, o, x, |, /, \) before
---- the template output. Since the first template field is {node|short} (a hex hash),
---- we strip the leading graph prefix which consists only of known graph
---- characters: spaces, @, o, x, |, /, \, and similar drawing characters.
+--- sl smartlog prepends graph characters before the template output. These may
+--- include ASCII characters (spaces, @, o, x, |, /, \) as well as Unicode
+--- box-drawing characters (U+2502 │, U+2577 ╷, U+251C ├, U+2500 ─, U+256F ╯,
+--- U+256D ╭, etc.) depending on terminal capabilities and Sapling version.
+---
+--- Instead of enumerating all possible graph characters, this function finds
+--- the 12-character hex hash directly. The template always starts with
+--- {node|short} (a 12-char hex hash) followed by a pipe delimiter, so we
+--- search for the first occurrence of 12+ consecutive hex digits followed by
+--- a pipe character.
+---
 --- Lines that already start with a hex digit pass through unchanged.
 ---@param line string Raw line from sl smartlog
 ---@return string Line with graph prefix stripped
@@ -54,10 +61,15 @@ local function strip_graph_prefix(line)
   if line:match("^%x") then
     return line
   end
-  -- Strip leading graph-rendering characters only (space, @, o, x, |, /, \, ., ~)
-  -- These are the characters sl uses for graph drawing
-  local stripped = line:match("^[ @ox|/\\.~]*(%x.*)$")
-  return stripped or line
+  -- Find the first sequence of 12+ hex characters followed by a pipe (the
+  -- template field delimiter). This works regardless of what graph characters
+  -- precede it -- ASCII, Unicode box-drawing, or anything else.
+  local start_pos = line:find("%x%x%x%x%x%x%x%x%x%x%x%x|")
+  if start_pos then
+    return line:sub(start_pos)
+  end
+  -- Fallback: return original line (will fail validation downstream)
+  return line
 end
 
 ---Parse a single smartlog line
