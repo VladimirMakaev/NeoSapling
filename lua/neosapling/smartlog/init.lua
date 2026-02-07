@@ -27,7 +27,7 @@ local function setup_buffer()
   local bufnr = smartlog_buffer.handle
 
   -- Set filetype
-  vim.api.nvim_buf_set_option(bufnr, "filetype", "neosapling")
+  vim.bo[bufnr].filetype = "neosapling"
 
   -- q closes smartlog and returns to previous buffer
   vim.keymap.set("n", "q", function()
@@ -130,10 +130,7 @@ function M._render()
   local result = ui.render(tree)
   smartlog_buffer:set_lines(result.lines)
   smartlog_buffer:clear_highlights()
-
-  for _, hl in ipairs(result.highlights) do
-    smartlog_buffer:add_highlight(hl.line, hl.col_start, hl.col_end, hl.hl)
-  end
+  smartlog_buffer:set_highlights(result.highlights)
 end
 
 --- Refresh smartlog data and re-render
@@ -319,9 +316,7 @@ function M._show_diff_buffer(diffs, commit, diff_type)
 
   diff_buffer:set_lines(lines)
   diff_buffer:clear_highlights()
-  for _, hl in ipairs(highlights) do
-    diff_buffer:add_highlight(hl.line, hl.col_start, hl.col_end, hl.hl)
-  end
+  diff_buffer:set_highlights(highlights)
 
   -- Show in split
   diff_buffer:show("split")

@@ -39,15 +39,10 @@ end
 
 --- Configure buffer options for scratch buffer behavior
 function Buffer:_configure()
-  local opts = {
-    buftype = "nofile",
-    bufhidden = "hide",
-    swapfile = false,
-    modifiable = false,
-  }
-  for opt, val in pairs(opts) do
-    api.nvim_buf_set_option(self.handle, opt, val)
-  end
+  vim.bo[self.handle].buftype = "nofile"
+  vim.bo[self.handle].bufhidden = "hide"
+  vim.bo[self.handle].swapfile = false
+  vim.bo[self.handle].modifiable = false
 end
 
 --- Check if buffer is still valid
@@ -62,9 +57,9 @@ function Buffer:set_lines(lines)
   if not self:is_valid() then
     return
   end
-  api.nvim_buf_set_option(self.handle, "modifiable", true)
+  vim.bo[self.handle].modifiable = true
   api.nvim_buf_set_lines(self.handle, 0, -1, false, lines)
-  api.nvim_buf_set_option(self.handle, "modifiable", false)
+  vim.bo[self.handle].modifiable = false
 end
 
 --- Clear all extmarks (highlights) from this buffer's namespace
@@ -88,6 +83,18 @@ function Buffer:add_highlight(line, col_start, col_end, hl_group)
     end_col = col_end,
     hl_group = hl_group,
   })
+end
+
+--- Apply multiple highlights in a single batch
+---@param highlights table[] Array of {line, col_start, col_end, hl} entries
+function Buffer:set_highlights(highlights)
+  if not self:is_valid() then return end
+  for _, hl in ipairs(highlights) do
+    api.nvim_buf_set_extmark(self.handle, self.namespace, hl.line, hl.col_start, {
+      end_col = hl.col_end,
+      hl_group = hl.hl,
+    })
+  end
 end
 
 --- Open buffer in a window

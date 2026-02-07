@@ -78,7 +78,7 @@ local function setup_buffer()
   local bufnr = status_buffer.handle
 
   -- Set filetype
-  vim.api.nvim_buf_set_option(bufnr, "filetype", "neosapling")
+  vim.bo[bufnr].filetype = "neosapling"
 
   -- Tab toggles fold or file expansion based on cursor position
   vim.keymap.set("n", "<Tab>", function()
@@ -230,10 +230,10 @@ local function setup_folds(folds)
 
   local win = vim.fn.bufwinid(status_buffer.handle)
   if win ~= -1 then
-    vim.api.nvim_win_set_option(win, "foldmethod", "expr")
-    vim.api.nvim_win_set_option(win, "foldexpr", "v:lua.neosapling_status_foldexpr(v:lnum)")
-    vim.api.nvim_win_set_option(win, "foldlevel", 99) -- Start with all open
-    vim.api.nvim_win_set_option(win, "foldenable", true)
+    vim.wo[win].foldmethod = "expr"
+    vim.wo[win].foldexpr = "v:lua.neosapling_status_foldexpr(v:lnum)"
+    vim.wo[win].foldlevel = 99 -- Start with all open
+    vim.wo[win].foldenable = true
   end
 end
 
@@ -289,10 +289,7 @@ function M._render()
   local result = ui.render(tree)
   status_buffer:set_lines(result.lines)
   status_buffer:clear_highlights()
-
-  for _, hl in ipairs(result.highlights) do
-    status_buffer:add_highlight(hl.line, hl.col_start, hl.col_end, hl.hl)
-  end
+  status_buffer:set_highlights(result.highlights)
 
   -- Setup folds
   setup_folds(result.folds)
@@ -315,42 +312,54 @@ end
 local current_version = nil
 
 --- Refresh status data and re-render
+--- All three CLI calls (status, smartlog, bookmarks) execute in parallel.
+--- A completion counter pattern collects results and renders when all finish.
 function M.refresh()
   local version = vim.loop.now()
   current_version = version
 
-  neosapling.sl.status(function(grouped_status, err1)
+  local results = {}
+  local pending = 3 -- Number of parallel CLI calls
+
+  local function on_complete()
+    pending = pending - 1
+    if pending > 0 then return end
     if current_version ~= version then return end -- Stale
-    if err1 then
-      vim.notify("NeoSapling: " .. err1, vim.log.levels.ERROR)
-      return
-    end
 
-    neosapling.sl.smartlog(function(commits, err2)
-      if current_version ~= version then return end -- Stale
-      if err2 then
-        -- Non-fatal: show status without smartlog
-        commits = {}
-      end
+    current_data = {
+      status = results.status,
+      commits = results.commits or {},
+      bookmarks = results.bookmarks or {},
+    }
 
-      neosapling.sl.bookmarks(function(bookmarks, err3)
-        if current_version ~= version then return end -- Stale
-        if err3 then
-          -- Non-fatal: show status without bookmarks
-          bookmarks = {}
-        end
-
-        current_data = {
-          status = grouped_status,
-          commits = commits,
-          bookmarks = bookmarks,
-        }
-
-        vim.schedule(function()
-          M._render()
-        end)
-      end)
+    vim.schedule(function()
+      M._render()
     end)
+  end
+
+  -- All three fire simultaneously
+  neosapling.sl.status(function(grouped_status, err)
+    if current_version ~= version then return end -- Stale
+    if err then
+      vim.notify("NeoSapling: " .. err, vim.log.levels.ERROR)
+      return -- Error in primary data source aborts refresh
+    end
+    results.status = grouped_status
+    on_complete()
+  end)
+
+  neosapling.sl.smartlog(function(commits, err)
+    if current_version ~= version then return end -- Stale
+    if err then commits = {} end -- Non-fatal: show status without smartlog
+    results.commits = commits
+    on_complete()
+  end)
+
+  neosapling.sl.bookmarks(function(bookmarks, err)
+    if current_version ~= version then return end -- Stale
+    if err then bookmarks = {} end -- Non-fatal: show status without bookmarks
+    results.bookmarks = bookmarks
+    on_complete()
   end)
 end
 
