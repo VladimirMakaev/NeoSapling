@@ -175,12 +175,21 @@ function M.close()
   require("neosapling.lib.watcher").notify_close("smartlog")
   if smartlog_buffer and smartlog_buffer:is_valid() then
     -- Restore the buffer the user had before opening smartlog
-    if prev_bufnr and vim.api.nvim_buf_is_valid(prev_bufnr) then
+    if prev_bufnr and vim.api.nvim_buf_is_valid(prev_bufnr) and vim.bo[prev_bufnr].buflisted then
       vim.api.nvim_set_current_buf(prev_bufnr)
     else
       -- Fallback: create a fresh empty buffer
       vim.cmd("enew")
     end
+
+    -- Close any other windows still showing the smartlog buffer
+    local wins = vim.fn.win_findbuf(smartlog_buffer.handle)
+    for _, win in ipairs(wins) do
+      if vim.api.nvim_win_is_valid(win) then
+        pcall(vim.api.nvim_win_close, win, true)
+      end
+    end
+
     smartlog_buffer:destroy()
     smartlog_buffer = nil
   end
