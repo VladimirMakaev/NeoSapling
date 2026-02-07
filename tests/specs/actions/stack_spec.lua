@@ -52,7 +52,7 @@ describe("stack operations", function()
       local changed = vim.wait(3000, function()
         local current = vim.trim(vim.fn.system("cd " .. repo_path .. " && sl log -r '.' -T '{node|short}'"))
         return current == first_hash
-      end)
+      end, 200)
 
       assert.is_true(changed, "current commit should have changed to first commit")
     end)
@@ -75,7 +75,7 @@ describe("stack operations", function()
       local amended = vim.wait(3000, function()
         local status = vim.trim(vim.fn.system("cd " .. repo_path .. " && sl status"))
         return status == ""
-      end)
+      end, 200)
 
       assert.is_true(amended, "amend should absorb changes into current commit (clean status)")
     end)
@@ -98,7 +98,7 @@ describe("stack operations", function()
       local uncommitted = vim.wait(3000, function()
         local new_hash = vim.trim(vim.fn.system("cd " .. repo_path .. " && sl log -r '.' -T '{node|short}'"))
         return new_hash ~= current_hash
-      end)
+      end, 200)
 
       assert.is_true(uncommitted, "current commit should have changed after uncommit")
 
@@ -131,7 +131,7 @@ describe("stack operations", function()
       local hidden = vim.wait(3000, function()
         local all_commits = vim.trim(vim.fn.system("cd " .. repo_path .. " && sl log -r 'all()' -T '{node|short}\\n'"))
         return not all_commits:match(second_hash)
-      end)
+      end, 200)
 
       assert.is_true(hidden, "hidden commit should no longer appear in all()")
     end)
@@ -162,7 +162,7 @@ describe("stack operations", function()
       local absorbed = vim.wait(3000, function()
         local status = vim.trim(vim.fn.system("cd " .. repo_path .. " && sl status"))
         return status == ""
-      end)
+      end, 200)
 
       assert.is_true(absorbed, "absorb should apply changes into appropriate commits (clean status)")
     end)
