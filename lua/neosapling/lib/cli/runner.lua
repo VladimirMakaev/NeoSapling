@@ -45,6 +45,7 @@ function M.run(cmd, opts, on_exit)
   local stderr_acc = { "" }
 
   local obj = vim.system(cmd, {
+    stdin = false, -- Close stdin so spawned processes receive EOF in headless mode
     cwd = opts.cwd,
     text = true, -- Text mode for line-based output
     stdout = function(err, data)

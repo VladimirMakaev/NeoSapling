@@ -12,6 +12,8 @@
 #   - Tests run with 300s timeout to prevent hanging nvim --headless processes
 #   - nvim --headless requires explicit exit (plenary handles this for tests)
 #   - For manual nvim --headless scripts, always call vim.cmd('qa!') or os.exit()
+#   - WATCHMAN_SOCK=/dev/null prevents sl from connecting to Watchman (avoids hangs)
+#   - HGPLAIN=1 disables sl interactive features (pager, progress, etc.)
 
 .PHONY: test clean
 
@@ -25,7 +27,7 @@ tmp/plenary:
 
 # Run tests in isolated nvim instance (with timeout to prevent hangs)
 test: tmp/plenary
-	@timeout $(TIMEOUT) env NVIM_APPNAME=neosapling-test nvim --headless --noplugin -u NONE -S tests/init.lua || \
+	@timeout $(TIMEOUT) env NVIM_APPNAME=neosapling-test WATCHMAN_SOCK=/dev/null HGPLAIN=1 nvim --headless --noplugin -u NONE -S tests/init.lua || \
 		if [ $$? -eq 124 ]; then echo "ERROR: Tests timed out after $(TIMEOUT)s"; exit 1; fi
 
 # Clean up
