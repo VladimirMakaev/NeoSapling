@@ -75,8 +75,13 @@ local function setup_buffer()
     end
   end, { buffer = bufnr, desc = "Hide commit" })
 
-  -- P: pull from remote
-  vim.keymap.set("n", "P", function()
+  -- Ctrl-r: manual refresh
+  vim.keymap.set("n", "<C-r>", function()
+    require("neosapling.smartlog").refresh()
+  end, { buffer = bufnr, desc = "Refresh smartlog" })
+
+  -- p: pull from remote (lowercase to match Neogit convention)
+  vim.keymap.set("n", "p", function()
     require("neosapling.actions.stack").pull()
   end, { buffer = bufnr, desc = "Pull from remote" })
 

@@ -199,8 +199,13 @@ local function setup_buffer()
     end
   end, { buffer = bufnr, desc = "Goto commit or bookmark" })
 
-  -- P: pull from remote
-  vim.keymap.set("n", "P", function()
+  -- Ctrl-r: manual refresh
+  vim.keymap.set("n", "<C-r>", function()
+    require("neosapling.status").refresh()
+  end, { buffer = bufnr, desc = "Refresh status" })
+
+  -- p: pull from remote (lowercase to match Neogit convention)
+  vim.keymap.set("n", "p", function()
     require("neosapling.actions.stack").pull()
   end, { buffer = bufnr, desc = "Pull from remote" })
 
