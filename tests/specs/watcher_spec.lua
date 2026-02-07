@@ -1,0 +1,67 @@
+--- Tests for watcher module detection and lifecycle
+local watcher = require("neosapling.lib.watcher")
+
+describe("neosapling.lib.watcher", function()
+  describe("module exports", function()
+    it("exports is_available function", function()
+      assert.is_function(watcher.is_available)
+    end)
+
+    it("exports notify_open function", function()
+      assert.is_function(watcher.notify_open)
+    end)
+
+    it("exports notify_close function", function()
+      assert.is_function(watcher.notify_close)
+    end)
+
+    it("exports pause function", function()
+      assert.is_function(watcher.pause)
+    end)
+
+    it("exports resume function", function()
+      assert.is_function(watcher.resume)
+    end)
+  end)
+
+  describe("is_available", function()
+    it("returns boolean", function()
+      local result = watcher.is_available()
+      assert.is_boolean(result)
+    end)
+
+    it("returns consistent result on repeated calls (caching)", function()
+      local first = watcher.is_available()
+      local second = watcher.is_available()
+      assert.are.equal(first, second)
+    end)
+  end)
+
+  describe("lifecycle", function()
+    it("notify_open does not error with valid view name", function()
+      assert.has_no.errors(function()
+        watcher.notify_open("status")
+      end)
+    end)
+
+    it("notify_close does not error with valid view name", function()
+      assert.has_no.errors(function()
+        watcher.notify_close("status")
+      end)
+    end)
+
+    it("pause and resume do not error", function()
+      assert.has_no.errors(function()
+        watcher.pause()
+        watcher.resume()
+      end)
+    end)
+
+    it("double resume does not error", function()
+      assert.has_no.errors(function()
+        watcher.resume()
+        watcher.resume()
+      end)
+    end)
+  end)
+end)
