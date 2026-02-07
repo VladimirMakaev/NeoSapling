@@ -371,7 +371,7 @@ function M.open()
     setup_buffer()
   end
 
-  status_buffer:show("split")
+  status_buffer:show("tab")
   require("neosapling.lib.watcher").notify_open("status")
   is_initial_open = true
   M.refresh()
@@ -381,6 +381,26 @@ end
 function M.close()
   require("neosapling.lib.watcher").notify_close("status")
   if status_buffer and status_buffer:is_valid() then
+    -- Close all windows showing the status buffer
+    local wins = vim.fn.win_findbuf(status_buffer.handle)
+
+    if vim.fn.tabpagenr('$') > 1 then
+      -- We have multiple tabs, close the status tab
+      for _, win in ipairs(wins) do
+        if vim.api.nvim_win_is_valid(win) then
+          local tab = vim.api.nvim_win_get_tabpage(win)
+          pcall(vim.api.nvim_set_current_tabpage, tab)
+          pcall(vim.cmd, "tabclose")
+        end
+      end
+    else
+      -- Only one tab - switch to previous buffer
+      local ok = pcall(vim.cmd, "bprevious")
+      if not ok or vim.api.nvim_get_current_buf() == status_buffer.handle then
+        vim.cmd("enew")
+      end
+    end
+
     status_buffer:destroy()
     status_buffer = nil
   end
