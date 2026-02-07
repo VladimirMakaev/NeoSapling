@@ -142,15 +142,50 @@ local function setup_buffer()
     end
   end, { buffer = bufnr, desc = "Unstage file" })
 
-  -- Discard changes (x key)
+  -- Discard changes (x key) — context-sensitive: file-level or hunk-level
   vim.keymap.set("n", "x", function()
     local context = require("neosapling.status.context")
-    local file_actions = require("neosapling.actions.file")
     local item = context.get_item_at_cursor(line_map)
-    if item and item.type == "file" and item.file then
+    if not item then return end
+
+    if item.type == "file" then
+      -- Existing file-level discard
+      local file_actions = require("neosapling.actions.file")
       file_actions.discard(item.file)
+    elseif item.type == "hunk" or item.type == "diff_line" then
+      -- Hunk-level discard
+      local hunk_actions = require("neosapling.actions.hunk")
+      local hunk_info = hunk_actions.find_hunk_at_cursor(line_map, vim.fn.line("."))
+      if hunk_info then
+        hunk_actions.discard(hunk_info.file, hunk_info.hunk)
+      end
     end
-  end, { buffer = bufnr, desc = "Discard changes" })
+  end, { buffer = bufnr, desc = "Discard changes or hunk" })
+
+  -- Navigate to previous hunk header ({ key)
+  vim.keymap.set("n", "{", function()
+    local lnum = vim.fn.line(".")
+    for i = lnum - 1, 1, -1 do
+      local item = line_map[i]
+      if item and item.type == "hunk" then
+        vim.fn.cursor(i, 1)
+        return
+      end
+    end
+  end, { buffer = bufnr, desc = "Previous hunk" })
+
+  -- Navigate to next hunk header (} key)
+  vim.keymap.set("n", "}", function()
+    local lnum = vim.fn.line(".")
+    local total = vim.api.nvim_buf_line_count(bufnr)
+    for i = lnum + 1, total do
+      local item = line_map[i]
+      if item and item.type == "hunk" then
+        vim.fn.cursor(i, 1)
+        return
+      end
+    end
+  end, { buffer = bufnr, desc = "Next hunk" })
 
   -- Enter: goto commit or bookmark under cursor
   vim.keymap.set("n", "<CR>", function()
@@ -169,34 +204,13 @@ local function setup_buffer()
     require("neosapling.actions.stack").pull()
   end, { buffer = bufnr, desc = "Pull from remote" })
 
-  -- d: show full file diff or open diff popup for commit
+  -- d: show side-by-side file diff or open diff popup for commit
   vim.keymap.set("n", "d", function()
     local context = require("neosapling.status.context")
     local item = context.get_item_at_cursor(line_map)
     if not item then return end
     if item.type == "file" then
-      local sl_cli = require("neosapling.lib.cli")
-      sl_cli.diff():arg("--"):arg(item.file.path):call({}, function(result)
-        vim.schedule(function()
-          local lines = result.stdout or {}
-          if #lines == 0 then
-            vim.notify("No diff for " .. item.file.path, vim.log.levels.INFO)
-            return
-          end
-          -- Create vertical split with diff content
-          vim.cmd("vsplit")
-          local buf = vim.api.nvim_create_buf(false, true)
-          vim.api.nvim_set_current_buf(buf)
-          vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-          vim.bo[buf].filetype = "diff"
-          vim.bo[buf].buftype = "nofile"
-          vim.bo[buf].modifiable = false
-          vim.keymap.set("n", "q", function()
-            local win = vim.api.nvim_get_current_win()
-            vim.api.nvim_win_close(win, true)
-          end, { buffer = buf, desc = "Close diff" })
-        end)
-      end)
+      require("neosapling.diff.split").open_file_diff(item.file.path)
     elseif item.type == "commit" then
       require("neosapling.popups.diff").create(item.commit)
     end

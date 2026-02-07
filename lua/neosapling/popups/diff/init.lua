@@ -33,6 +33,14 @@ end
 --- Diff commit against its parent
 ---@param commit CommitExtended
 function M._diff_vs_parent(commit)
+  -- Try diffview.nvim first
+  local split = require("neosapling.diff.split")
+  if split.has_diffview() then
+    split.open_commit_diff(commit.node, "parent")
+    return
+  end
+
+  -- Fallback: unified diff in split buffer
   local neosapling = require("neosapling")
   local smartlog = require("neosapling.smartlog")
 
@@ -60,6 +68,14 @@ end
 --- Diff commit against working copy
 ---@param commit CommitExtended
 function M._diff_vs_working(commit)
+  -- Try diffview.nvim first
+  local split = require("neosapling.diff.split")
+  if split.has_diffview() then
+    split.open_commit_diff(commit.node, "working")
+    return
+  end
+
+  -- Fallback: unified diff in split buffer
   local neosapling = require("neosapling")
   local smartlog = require("neosapling.smartlog")
 
