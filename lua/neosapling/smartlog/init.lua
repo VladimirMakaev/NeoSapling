@@ -13,7 +13,6 @@ local smartlog_buffer = nil
 local current_data = nil
 local line_map = {}
 local diff_buffer = nil
-local prev_bufnr = nil
 
 -- Version token for preventing stale data from async operations
 local current_version = nil
@@ -153,19 +152,16 @@ function M.refresh()
   end)
 end
 
---- Open the smartlog buffer (full-screen in current window)
+--- Open the smartlog buffer (full-screen in new tab)
 function M.open()
-  -- Save the current buffer so we can restore it on close
-  prev_bufnr = vim.api.nvim_get_current_buf()
-
   -- Create or get existing buffer
   if not smartlog_buffer or not smartlog_buffer:is_valid() then
     smartlog_buffer = ui.Buffer:new("neosapling://smartlog")
     setup_buffer()
   end
 
-  -- Show full-screen (take over current window)
-  smartlog_buffer:show("current")
+  -- Show in a new tab (full screen, like Neogit)
+  smartlog_buffer:show("tab")
   require("neosapling.lib.watcher").notify_open("smartlog")
   M.refresh()
 end
@@ -174,26 +170,29 @@ end
 function M.close()
   require("neosapling.lib.watcher").notify_close("smartlog")
   if smartlog_buffer and smartlog_buffer:is_valid() then
-    -- Restore the buffer the user had before opening smartlog
-    if prev_bufnr and vim.api.nvim_buf_is_valid(prev_bufnr) and vim.bo[prev_bufnr].buflisted then
-      vim.api.nvim_set_current_buf(prev_bufnr)
-    else
-      -- Fallback: create a fresh empty buffer
-      vim.cmd("enew")
-    end
-
-    -- Close any other windows still showing the smartlog buffer
+    -- Close all windows showing the smartlog buffer
     local wins = vim.fn.win_findbuf(smartlog_buffer.handle)
-    for _, win in ipairs(wins) do
-      if vim.api.nvim_win_is_valid(win) then
-        pcall(vim.api.nvim_win_close, win, true)
+
+    if vim.fn.tabpagenr('$') > 1 then
+      -- We have multiple tabs, close the smartlog tab
+      for _, win in ipairs(wins) do
+        if vim.api.nvim_win_is_valid(win) then
+          local tab = vim.api.nvim_win_get_tabpage(win)
+          pcall(vim.api.nvim_set_current_tabpage, tab)
+          pcall(vim.cmd, "tabclose")
+        end
+      end
+    else
+      -- Only one tab - switch to previous buffer
+      local ok = pcall(vim.cmd, "bprevious")
+      if not ok or vim.api.nvim_get_current_buf() == smartlog_buffer.handle then
+        vim.cmd("enew")
       end
     end
 
     smartlog_buffer:destroy()
     smartlog_buffer = nil
   end
-  prev_bufnr = nil
   current_data = nil
   line_map = {}
 end
