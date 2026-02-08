@@ -70,6 +70,8 @@ function M.open_file_diff(filepath)
       return
     end
     -- diffview.nvim failed (likely no Hg/Sapling adapter configured)
+    -- Clean up any partial diffview state before falling back
+    pcall(vim.cmd, "DiffviewClose")
     -- Fall through to built-in
     vim.notify(
       "diffview.nvim failed, using built-in diff: " .. tostring(err),
@@ -92,8 +94,24 @@ function M._open_builtin_file_diff(filepath)
   local orig_win = vim.api.nvim_get_current_win()
 
   -- Open the working copy file in the current window (LEFT side)
-  vim.cmd("edit " .. vim.fn.fnameescape(filepath))
-  vim.cmd("diffthis")
+  -- Wrap in pcall: BufRead/BufEnter autocommands from git-only plugins
+  -- (gitsigns, fugitive, vim-signify) may fail in a pure Sapling repo
+  local edit_ok, edit_err = pcall(vim.cmd, "edit " .. vim.fn.fnameescape(filepath))
+  if not edit_ok then
+    vim.notify(
+      "Failed to open file for diff: " .. tostring(edit_err),
+      vim.log.levels.WARN
+    )
+    return
+  end
+  -- diffthis may fail if VCS-aware plugins interfere; continue without diff mode
+  local dt_ok, dt_err = pcall(vim.cmd, "diffthis")
+  if not dt_ok then
+    vim.notify(
+      "diffthis failed on working copy: " .. tostring(dt_err),
+      vim.log.levels.DEBUG
+    )
+  end
 
   -- Open a vertical split on the RIGHT for committed version
   vim.cmd("vsplit")
@@ -144,7 +162,13 @@ function M._open_builtin_file_diff(filepath)
       -- Enable diff mode on the scratch buffer
       if vim.api.nvim_win_is_valid(scratch_win) then
         vim.api.nvim_win_call(scratch_win, function()
-          vim.cmd("diffthis")
+          local dt_ok, dt_err = pcall(vim.cmd, "diffthis")
+          if not dt_ok then
+            vim.notify(
+              "diffthis failed on scratch buffer: " .. tostring(dt_err),
+              vim.log.levels.DEBUG
+            )
+          end
         end)
       end
     end)
@@ -191,6 +215,8 @@ function M.open_commit_diff(commit_node, diff_type)
       return
     end
     -- diffview.nvim failed, fall through
+    -- Clean up any partial diffview state
+    pcall(vim.cmd, "DiffviewClose")
     vim.notify(
       "diffview.nvim failed, using built-in diff: " .. tostring(err),
       vim.log.levels.DEBUG
