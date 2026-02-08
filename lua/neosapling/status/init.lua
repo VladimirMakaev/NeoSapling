@@ -162,30 +162,30 @@ local function setup_buffer()
     end
   end, { buffer = bufnr, desc = "Discard changes or hunk" })
 
-  -- Navigate to previous hunk header ({ key)
+  -- Navigate to previous section header ({ key)
   vim.keymap.set("n", "{", function()
     local lnum = vim.fn.line(".")
     for i = lnum - 1, 1, -1 do
       local item = line_map[i]
-      if item and item.type == "hunk" then
+      if item and item.type == "section" then
         vim.fn.cursor(i, 1)
         return
       end
     end
-  end, { buffer = bufnr, desc = "Previous hunk" })
+  end, { buffer = bufnr, desc = "Previous section" })
 
-  -- Navigate to next hunk header (} key)
+  -- Navigate to next section header (} key)
   vim.keymap.set("n", "}", function()
     local lnum = vim.fn.line(".")
     local total = vim.api.nvim_buf_line_count(bufnr)
     for i = lnum + 1, total do
       local item = line_map[i]
-      if item and item.type == "hunk" then
+      if item and item.type == "section" then
         vim.fn.cursor(i, 1)
         return
       end
     end
-  end, { buffer = bufnr, desc = "Next hunk" })
+  end, { buffer = bufnr, desc = "Next section" })
 
   -- Enter: goto commit or bookmark under cursor
   vim.keymap.set("n", "<CR>", function()
