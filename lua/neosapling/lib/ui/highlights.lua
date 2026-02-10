@@ -46,6 +46,10 @@ local highlight_groups = {
   NeoSaplingAuthor = { link = "Comment" }, -- Commit author
   NeoSaplingDate = { link = "Comment" }, -- Commit date
 
+  -- Hint bar (persistent key binding line at top of views)
+  NeoSaplingHintKey = { bold = true, link = "Special" }, -- Key letters in hint bar
+  NeoSaplingHintAction = { link = "Comment" }, -- Action descriptions in hint bar
+
   -- SSL smartlog metadata (Phabricator, signals, descriptions)
   NeoSaplingPhabDiff = { link = "Identifier" }, -- D12345 diff IDs
   NeoSaplingPhabStatus = { link = "String" }, -- Accepted, Needs Review, etc.
