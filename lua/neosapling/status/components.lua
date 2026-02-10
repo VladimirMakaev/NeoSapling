@@ -4,6 +4,7 @@
 
 local ui = require("neosapling.lib.ui")
 local staged = require("neosapling.status.staged")
+local hintbar = require("neosapling.lib.ui.hintbar")
 
 local M = {}
 
@@ -255,7 +256,25 @@ function M.build(data)
   }))
   current_line = current_line + 1
 
-  -- Empty line after header
+  -- Hint bar (line 2)
+  local status_hints = {
+    { key = "?", action = "Help" },
+    { key = "c", action = "Commit" },
+    { key = "s", action = "Stage" },
+    { key = "u", action = "Unstage" },
+    { key = "x", action = "Discard" },
+    { key = "d", action = "Diff" },
+    { key = "p", action = "Pull" },
+    { key = "q", action = "Close" },
+  }
+  local hint_line, hint_hls = hintbar.build(status_hints, current_line - 1) -- 0-indexed
+  table.insert(children, ui.text(hint_line))
+  for _, hl in ipairs(hint_hls) do
+    table.insert(extra_highlights, hl)
+  end
+  current_line = current_line + 1
+
+  -- Empty line after hint bar
   table.insert(children, ui.text(""))
   current_line = current_line + 1
 

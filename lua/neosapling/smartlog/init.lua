@@ -7,6 +7,7 @@
 local Buffer = require("neosapling.lib.ui.buffer")
 local neosapling = require("neosapling")
 local components = require("neosapling.smartlog.components")
+local hintbar = require("neosapling.lib.ui.hintbar")
 
 local M = {}
 
@@ -218,7 +219,38 @@ function M._render()
   end
 
   local lines, highlights, new_line_map = components.build(current_data)
-  line_map = new_line_map
+
+  -- Prepend hint bar (line 1) + blank line (line 2) before smartlog content
+  local smartlog_hints = {
+    { key = "?", action = "Help" },
+    { key = "c", action = "Commit" },
+    { key = "d", action = "Diff" },
+    { key = "J", action = "Next" },
+    { key = "K", action = "Prev" },
+    { key = "p", action = "Pull" },
+    { key = "q", action = "Close" },
+  }
+  local hint_line, hint_hls = hintbar.build(smartlog_hints, 0)
+  table.insert(lines, 1, hint_line)
+  table.insert(lines, 2, "")
+
+  -- Offset ALL existing highlights by +2 for the 2 prepended lines
+  for _, hl in ipairs(highlights) do
+    hl.line = hl.line + 2
+  end
+
+  -- Offset ALL line_map keys by +2
+  local offset_map = {}
+  for k, v in pairs(new_line_map) do
+    offset_map[k + 2] = v
+  end
+
+  -- Add hint bar highlights
+  for _, hl in ipairs(hint_hls) do
+    table.insert(highlights, hl)
+  end
+
+  line_map = offset_map
 
   smartlog_buffer:set_lines(lines)
   smartlog_buffer:clear_highlights()
