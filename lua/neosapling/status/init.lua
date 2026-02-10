@@ -209,6 +209,47 @@ local function setup_buffer()
     require("neosapling.actions.stack").pull()
   end, { buffer = bufnr, desc = "Pull from remote" })
 
+  -- J: jump to next commit line in smartlog section (cursor on hash)
+  vim.keymap.set("n", "J", function()
+    local bufnr_local = status_buffer and status_buffer.handle
+    if not bufnr_local then return end
+    local lnum = vim.fn.line(".")
+    local total = vim.fn.line("$")
+    for target = lnum + 1, total do
+      local item = line_map[target]
+      if item and item.type == "commit" then
+        local col = 0
+        local lines = vim.api.nvim_buf_get_lines(bufnr_local, target - 1, target, false)
+        if #lines > 0 and item.commit and item.commit.node then
+          local start = lines[1]:find(item.commit.node, 1, true)
+          if start then col = start - 1 end
+        end
+        vim.api.nvim_win_set_cursor(0, { target, col })
+        return
+      end
+    end
+  end, { buffer = bufnr, desc = "Jump to next commit" })
+
+  -- K: jump to previous commit line in smartlog section (cursor on hash)
+  vim.keymap.set("n", "K", function()
+    local bufnr_local = status_buffer and status_buffer.handle
+    if not bufnr_local then return end
+    local lnum = vim.fn.line(".")
+    for target = lnum - 1, 1, -1 do
+      local item = line_map[target]
+      if item and item.type == "commit" then
+        local col = 0
+        local lines = vim.api.nvim_buf_get_lines(bufnr_local, target - 1, target, false)
+        if #lines > 0 and item.commit and item.commit.node then
+          local start = lines[1]:find(item.commit.node, 1, true)
+          if start then col = start - 1 end
+        end
+        vim.api.nvim_win_set_cursor(0, { target, col })
+        return
+      end
+    end
+  end, { buffer = bufnr, desc = "Jump to previous commit" })
+
   -- d: show side-by-side file diff or open diff popup for commit
   vim.keymap.set("n", "d", function()
     local context = require("neosapling.status.context")

@@ -323,11 +323,23 @@ function M._setup_diff_buffer_keymaps()
 
   local bufnr = diff_buffer.handle
 
-  -- q closes diff buffer
+  -- q closes diff tab and returns to previous tab
   vim.keymap.set("n", "q", function()
     if diff_buffer and diff_buffer:is_valid() then
+      local wins = vim.fn.win_findbuf(diff_buffer.handle)
       diff_buffer:destroy()
       diff_buffer = nil
+
+      -- Close the diff tab if we have multiple tabs
+      if vim.fn.tabpagenr('$') > 1 then
+        for _, win in ipairs(wins) do
+          if vim.api.nvim_win_is_valid(win) then
+            local tab = vim.api.nvim_win_get_tabpage(win)
+            pcall(vim.api.nvim_set_current_tabpage, tab)
+            pcall(vim.cmd, "tabclose")
+          end
+        end
+      end
     end
   end, { buffer = bufnr, desc = "Close diff buffer" })
 end
@@ -365,7 +377,9 @@ function M._show_diff_buffer(diffs, commit, diff_type)
   if #diffs == 0 then
     table.insert(lines, "No changes")
     diff_buffer:set_lines(lines)
-    diff_buffer:show("split")
+    diff_buffer:clear_highlights()
+    diff_buffer:set_highlights(highlights)
+    diff_buffer:show("tab")
     M._setup_diff_buffer_keymaps()
     return
   end
@@ -438,8 +452,8 @@ function M._show_diff_buffer(diffs, commit, diff_type)
   diff_buffer:clear_highlights()
   diff_buffer:set_highlights(highlights)
 
-  -- Show in split
-  diff_buffer:show("split")
+  -- Show full screen in new tab (matches smartlog/status pattern)
+  diff_buffer:show("tab")
 
   -- Set filetype for syntax
   vim.bo[diff_buffer.handle].filetype = "diff"

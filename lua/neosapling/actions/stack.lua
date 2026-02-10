@@ -25,6 +25,7 @@ end
 --- Reloads stale buffers via checktime after successful goto.
 ---@param node string Revision identifier to navigate to
 function M.goto_commit(node)
+  vim.notify("Going to " .. node:sub(1, 7) .. "...", vim.log.levels.INFO)
   cli.goto_rev():rev(node):call({}, function(result)
     if result.code == 0 then
       schedule_refresh()
