@@ -214,13 +214,11 @@ function M.open_commit_diff(commit_node, diff_type)
     if ok then
       return
     end
-    -- diffview.nvim failed, fall through
-    -- Clean up any partial diffview state
+    -- diffview.nvim can't handle this repo (no Sapling adapter) —
+    -- disable it for the rest of this session so we skip straight
+    -- to the built-in diff without error noise.
     pcall(vim.cmd, "DiffviewClose")
-    vim.notify(
-      "diffview.nvim failed, using built-in diff: " .. tostring(err),
-      vim.log.levels.DEBUG
-    )
+    diffview_available = false
   end
 
   -- Built-in fallback: delegate to smartlog._show_diff_buffer
