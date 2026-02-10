@@ -78,12 +78,13 @@ function M.parse(lines)
           lines = {},
         }
       elseif current_hunk then
-        -- Collect lines within a hunk
-        -- Skip --- and +++ file indicator lines
-        if not line:match("^%-%-%-") and not line:match("^%+%+%+") then
-          table.insert(current_hunk.lines, line)
-        end
+        -- Collect ALL lines within a hunk (including lines starting with --- or +++)
+        -- These are real diff content, e.g. deletion of "---@param" produces "----@param"
+        table.insert(current_hunk.lines, line)
       end
+      -- Lines between "diff --git" and first "@@" (like --- a/path, +++ b/path,
+      -- old mode, new mode, index, etc.) are silently skipped: current_hunk is nil
+      -- so neither the hunk header match nor the elseif branch applies.
     end
   end
 

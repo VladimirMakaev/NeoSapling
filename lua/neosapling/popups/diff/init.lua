@@ -30,62 +30,58 @@ function M.create(commit)
   return popups.show(p)
 end
 
---- Diff commit against its parent (show changes introduced by this commit)
+--- Show unified diff in a split buffer (built-in fallback)
 ---@param commit SslCommit|CommitExtended
-function M._diff_vs_parent(commit)
-  -- Try diffview.nvim first
-  local split = require("neosapling.diff.split")
-  if split.has_diffview() then
-    split.open_commit_diff(commit.node, "parent")
-    return
-  end
-
-  -- Fallback: unified diff in split buffer
+---@param diff_opts table Options for sl.diff ({change=node} or {rev=node})
+---@param diff_type string Description ("vs parent" or "vs working copy")
+local function show_unified_diff(commit, diff_opts, diff_type)
   local neosapling = require("neosapling")
   local smartlog = require("neosapling.smartlog")
 
-  vim.notify("Loading diff vs parent...", vim.log.levels.INFO)
+  vim.notify("Loading diff " .. diff_type .. "...", vim.log.levels.INFO)
 
-  -- sl diff -c {node} shows changes introduced by the commit (diff against parent)
-  neosapling.sl.diff({ change = commit.node }, function(diffs, err)
+  neosapling.sl.diff(diff_opts, function(diffs, err)
     if err then
       vim.notify("Diff failed: " .. err, vim.log.levels.ERROR)
       return
     end
 
     vim.schedule(function()
-      smartlog._show_diff_buffer(diffs, commit, "vs parent")
+      smartlog._show_diff_buffer(diffs, commit, diff_type)
     end)
   end)
+end
+
+--- Diff commit against its parent (show changes introduced by this commit)
+---@param commit SslCommit|CommitExtended
+function M._diff_vs_parent(commit)
+  -- Try diffview.nvim first — fall through to unified diff if it fails
+  local split = require("neosapling.diff.split")
+  if split.has_diffview() then
+    local ok = split.open_commit_diff(commit.node, "parent")
+    if ok ~= false then return end
+    -- diffview failed (returned false), fall through to unified diff
+  end
+
+  -- Built-in: unified diff in split buffer
+  -- sl diff -c {node} shows changes introduced by the commit (diff against parent)
+  show_unified_diff(commit, { change = commit.node }, "vs parent")
 end
 
 --- Diff commit against working copy (show what changed since this commit)
 ---@param commit SslCommit|CommitExtended
 function M._diff_vs_working(commit)
-  -- Try diffview.nvim first
+  -- Try diffview.nvim first — fall through to unified diff if it fails
   local split = require("neosapling.diff.split")
   if split.has_diffview() then
-    split.open_commit_diff(commit.node, "working")
-    return
+    local ok = split.open_commit_diff(commit.node, "working")
+    if ok ~= false then return end
+    -- diffview failed (returned false), fall through to unified diff
   end
 
-  -- Fallback: unified diff in split buffer
-  local neosapling = require("neosapling")
-  local smartlog = require("neosapling.smartlog")
-
-  vim.notify("Loading diff vs working copy...", vim.log.levels.INFO)
-
+  -- Built-in: unified diff in split buffer
   -- sl diff -r {node} shows working copy changes relative to that commit
-  neosapling.sl.diff({ rev = commit.node }, function(diffs, err)
-    if err then
-      vim.notify("Diff failed: " .. err, vim.log.levels.ERROR)
-      return
-    end
-
-    vim.schedule(function()
-      smartlog._show_diff_buffer(diffs, commit, "vs working copy")
-    end)
-  end)
+  show_unified_diff(commit, { rev = commit.node }, "vs working copy")
 end
 
 return M
