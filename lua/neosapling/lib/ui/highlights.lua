@@ -45,6 +45,14 @@ local highlight_groups = {
   NeoSaplingObsolete = { link = "Comment" }, -- Obsolete commits (x)
   NeoSaplingAuthor = { link = "Comment" }, -- Commit author
   NeoSaplingDate = { link = "Comment" }, -- Commit date
+
+  -- SSL smartlog metadata (Phabricator, signals, descriptions)
+  NeoSaplingPhabDiff = { link = "Identifier" }, -- D12345 diff IDs
+  NeoSaplingPhabStatus = { link = "String" }, -- Accepted, Needs Review, etc.
+  NeoSaplingSignalPass = { fg = "#00aa00", link = "DiagnosticOk" }, -- ✓ signal passing
+  NeoSaplingSignalFail = { fg = "#ff0000", link = "DiagnosticError" }, -- ✗ signal failing
+  NeoSaplingLocalChanges = { link = "WarningMsg" }, -- (local changes) indicator
+  NeoSaplingDesc = { link = "Normal" }, -- Commit message text
 }
 
 --- Check if a highlight group is already defined by user
