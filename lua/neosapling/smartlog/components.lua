@@ -1,75 +1,18 @@
 --- Component builder for smartlog view.
---- Transforms extended commit data into a component tree with line mapping.
+--- Transforms ssl output lines into display lines with highlights and line mapping.
+--- Phase 8.1: Replaced component-tree approach with direct ssl line rendering.
 --- @module neosapling.smartlog.components
-
-local ui = require("neosapling.lib.ui")
-local graph = require("neosapling.smartlog.graph")
 
 local M = {}
 
----Build smartlog view component tree
----@param data {commits: CommitExtended[]}
----@return Component, table<number, Item> tree and line mapping
-function M.build(data)
-  local line_map = {}
-  local current_line = 1
-  local commits = data.commits or {}
-
-  local children = {}
-
-  -- Header
-  table.insert(children, ui.row({
-    ui.text("Smartlog", { hl = "NeoSaplingHeader" }),
-  }))
-  current_line = current_line + 1
-
-  -- Empty line after header
-  table.insert(children, ui.text(""))
-  current_line = current_line + 1
-
-  if #commits == 0 then
-    table.insert(children, ui.text("  No commits found"))
-    return ui.col(children), line_map
-  end
-
-  -- Assign graph columns
-  local commit_index, _ = graph.assign_columns(commits)
-
-  -- Build commit rows
-  for _, commit in ipairs(commits) do
-    local prefix = graph.build_prefix(commit, {}, commit_index)
-
-    -- Determine graphnode highlight
-    local graphnode_hl = "NeoSaplingHash"
-    if commit.graphnode == "@" then
-      graphnode_hl = "NeoSaplingCurrent"
-    elseif commit.graphnode == "x" then
-      graphnode_hl = "NeoSaplingObsolete"
-    end
-
-    -- Build row parts
-    local row_parts = {
-      ui.text(prefix, {}),
-      ui.text(commit.graphnode .. " ", { hl = graphnode_hl }),
-      ui.text(commit.node .. " ", { hl = "NeoSaplingHash" }),
-    }
-
-    -- Add bookmarks if present
-    if commit.bookmarks and #commit.bookmarks > 0 then
-      table.insert(row_parts, ui.text("[" .. table.concat(commit.bookmarks, ", ") .. "] ", { hl = "NeoSaplingBranch" }))
-    end
-
-    -- Add author, date, and description
-    table.insert(row_parts, ui.text(commit.author, { hl = "NeoSaplingAuthor" }))
-    table.insert(row_parts, ui.text(" " .. commit.date .. " ", { hl = "NeoSaplingDate" }))
-    table.insert(row_parts, ui.text(commit.desc, {}))
-
-    table.insert(children, ui.row(row_parts))
-    line_map[current_line] = { type = "commit", commit = commit }
-    current_line = current_line + 1
-  end
-
-  return ui.col(children), line_map
+---Build smartlog view from ssl output lines
+---@param ssl_lines string[] Raw lines from sl smartlog -T '{ssl}'
+---@return string[] lines Display lines for buffer
+---@return table[] highlights Highlight definitions with line, col_start, col_end, hl
+---@return table<number, Item> line_map Maps 1-indexed line number to { type, commit }
+function M.build(ssl_lines)
+  local ssl_parser = require("neosapling.lib.parsers.smartlog_ssl")
+  return ssl_parser.build(ssl_lines)
 end
 
 return M
