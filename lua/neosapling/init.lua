@@ -141,6 +141,23 @@ function M.sl.smartlog_extended(callback)
   end)
 end
 
+--- Get ssl-format smartlog asynchronously
+---
+--- Runs `sl smartlog -T '{ssl}'` and returns raw output lines.
+--- SSL output is the display format — lines go directly to buffer.
+---
+---@param callback fun(lines: string[]|nil, err: string|nil)
+---@return vim.SystemObj|nil Handle for cancellation
+function M.sl.smartlog_ssl(callback)
+  cli.smartlog():template(parsers.smartlog_ssl.SSL_TEMPLATE):call({}, function(result)
+    if result.code ~= 0 then
+      callback(nil, "sl smartlog failed: " .. table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(result.stdout, nil)
+  end)
+end
+
 --- Get bookmarks asynchronously
 ---
 --- Runs `sl bookmark -T TEMPLATE` and parses the output into bookmark objects.
