@@ -74,8 +74,10 @@ end
 --- Get diff asynchronously
 ---
 --- Runs `sl diff --git` and parses the output into structured file diffs.
+--- Use `change` to show changes introduced by a specific revision (sl diff -c).
+--- Use `rev` to show diff of working copy vs a revision (sl diff -r).
 ---
----@param opts? {rev?: string, files?: string[]} Optional revision and file filters
+---@param opts? {rev?: string, change?: string, files?: string[]} Optional revision and file filters
 ---@param callback fun(diffs: FileDiff[]|nil, err: string|nil)
 ---@return vim.SystemObj|nil Handle for cancellation
 function M.sl.diff(opts, callback)
@@ -83,8 +85,11 @@ function M.sl.diff(opts, callback)
 
   local builder = cli.diff():git_format()
 
-  -- Add revision if specified
-  if opts.rev then
+  -- Add change flag if specified (shows changes introduced by revision)
+  if opts.change then
+    builder:change(opts.change)
+  elseif opts.rev then
+    -- Add revision if specified (shows working copy vs revision)
     builder:rev(opts.rev)
   end
 
@@ -138,6 +143,23 @@ function M.sl.smartlog_extended(callback)
 
     local commits = parsers.smartlog.parse_extended(result.stdout)
     callback(commits, nil)
+  end)
+end
+
+--- Get sl-format smartlog asynchronously (faster than ssl, used in status view)
+---
+--- Runs `sl smartlog -T '{sl}'` and returns raw output lines.
+--- The sl format produces the same graph tree as ssl on OSS Sapling.
+---
+---@param callback fun(lines: string[]|nil, err: string|nil)
+---@return vim.SystemObj|nil Handle for cancellation
+function M.sl.smartlog_sl(callback)
+  cli.smartlog():template("{sl}"):call({}, function(result)
+    if result.code ~= 0 then
+      callback(nil, "sl smartlog failed: " .. table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(result.stdout, nil)
   end)
 end
 

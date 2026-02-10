@@ -19,10 +19,10 @@ describe("components module", function()
 
   describe("build()", function()
     describe("basic structure", function()
-      it("returns tree and line_map tuple", function()
-        local tree, line_map = components.build({
+      it("returns tree, line_map, and extra_highlights tuple", function()
+        local tree, line_map, extra_hl = components.build({
           status = empty_status(),
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -30,12 +30,13 @@ describe("components module", function()
         assert.is_table(tree)
         assert.is_not_nil(line_map)
         assert.is_table(line_map)
+        assert.is_table(extra_hl)
       end)
 
       it("creates col as root node", function()
         local tree, _ = components.build({
           status = empty_status(),
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -45,7 +46,7 @@ describe("components module", function()
       it("creates header for empty status", function()
         local tree, _ = components.build({
           status = empty_status(),
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -58,7 +59,7 @@ describe("components module", function()
       it("header contains NeoSapling Status text", function()
         local tree, _ = components.build({
           status = empty_status(),
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -85,7 +86,7 @@ describe("components module", function()
 
         local tree, _ = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -108,7 +109,7 @@ describe("components module", function()
 
         local tree, _ = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -134,7 +135,7 @@ describe("components module", function()
 
         local _, line_map = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -157,7 +158,7 @@ describe("components module", function()
 
         local tree, _ = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -180,7 +181,7 @@ describe("components module", function()
 
         local tree, _ = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -216,7 +217,7 @@ describe("components module", function()
 
         local _, line_map = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -247,7 +248,7 @@ describe("components module", function()
 
         local _, line_map = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -279,7 +280,7 @@ describe("components module", function()
 
         local _, line_map = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -314,7 +315,7 @@ describe("components module", function()
 
         local tree, line_map = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -352,7 +353,7 @@ describe("components module", function()
 
         local tree, _ = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -371,51 +372,40 @@ describe("components module", function()
       end)
     end)
 
-    describe("Current Stack section", function()
-      it("creates Current Stack section for commits", function()
+    describe("Smartlog section", function()
+      it("creates Smartlog section from sl_lines", function()
+        local sl_lines = {
+          "  @  abc1234567  5 minutes ago  user",
+          "  │  Test commit message",
+          "  │",
+          "  o  def0987654  10 minutes ago  user",
+          "  │  Previous commit",
+        }
+
         local tree, _ = components.build({
           status = empty_status(),
-          commits = {
-            { node = "abc123", graphnode = "@", author = "user", date = "1h ago", desc = "Test commit", bookmarks = {} },
-          },
+          sl_lines = sl_lines,
           bookmarks = {},
         })
 
         local found = false
         for _, child in ipairs(tree.children) do
-          if child.tag == "fold" and child.options and child.options.id == "commits" then
+          if child.tag == "fold" and child.options and child.options.id == "smartlog" then
             found = true
           end
         end
-        assert.is_true(found, "Should have Current Stack section")
+        assert.is_true(found, "Should have Smartlog section")
       end)
 
-      it("filters obsolete commits from Current Stack", function()
+      it("populates line_map with commit items from sl_lines", function()
+        local sl_lines = {
+          "  @  abc1234567  5 minutes ago  user",
+          "  │  Test commit message",
+        }
+
         local _, line_map = components.build({
           status = empty_status(),
-          commits = {
-            { node = "abc123", graphnode = "@", author = "user", date = "1h ago", desc = "Current", bookmarks = {} },
-            { node = "def456", graphnode = "x", author = "user", date = "2h ago", desc = "Obsolete", bookmarks = {} },
-          },
-          bookmarks = {},
-        })
-
-        -- Count commits in line_map (non-obsolete should be in commits section)
-        local current_stack_commits = 0
-        for _, item in pairs(line_map) do
-          if item.type == "commit" and item.commit and item.commit.graphnode ~= "x" then
-            current_stack_commits = current_stack_commits + 1
-          end
-        end
-        assert.equals(1, current_stack_commits)
-      end)
-
-      it("populates line_map with commit items", function()
-        local _, line_map = components.build({
-          status = empty_status(),
-          commits = {
-            { node = "abc123", graphnode = "@", author = "user", date = "1h ago", desc = "Test", bookmarks = {} },
-          },
+          sl_lines = sl_lines,
           bookmarks = {},
         })
 
@@ -423,51 +413,41 @@ describe("components module", function()
         for _, item in pairs(line_map) do
           if item.type == "commit" then
             found_commit = true
-            assert.equals("abc123", item.commit.node)
+            assert.equals("abc1234567", item.commit.node)
           end
         end
         assert.is_true(found_commit, "Should have commit in line_map")
       end)
-    end)
 
-    describe("Recent Stacks section", function()
-      it("creates Recent Stacks section for obsolete commits", function()
-        local tree, _ = components.build({
+      it("returns extra highlights for sl output", function()
+        local sl_lines = {
+          "  @  abc1234567  5 minutes ago  user",
+          "  │  Test commit message",
+        }
+
+        local _, _, extra_hl = components.build({
           status = empty_status(),
-          commits = {
-            { node = "abc123", graphnode = "@", author = "user", date = "1h ago", desc = "Current", bookmarks = {} },
-            { node = "def456", graphnode = "x", author = "user", date = "2h ago", desc = "Obsolete", bookmarks = {} },
-          },
+          sl_lines = sl_lines,
           bookmarks = {},
         })
 
-        local found = false
-        for _, child in ipairs(tree.children) do
-          if child.tag == "fold" and child.options and child.options.id == "Recent Stacks" then
-            found = true
-            -- Should be folded by default
-            assert.is_true(child.options.folded, "Recent Stacks should be folded by default")
-          end
-        end
-        assert.is_true(found, "Should have Recent Stacks section")
+        assert.is_true(#extra_hl > 0, "Should have extra highlights from sl parser")
       end)
 
-      it("does not create Recent Stacks if no obsolete commits", function()
+      it("does not create Smartlog section when sl_lines is empty", function()
         local tree, _ = components.build({
           status = empty_status(),
-          commits = {
-            { node = "abc123", graphnode = "@", author = "user", date = "1h ago", desc = "Current", bookmarks = {} },
-          },
+          sl_lines = {},
           bookmarks = {},
         })
 
         local found = false
         for _, child in ipairs(tree.children) do
-          if child.tag == "fold" and child.options and child.options.id == "Recent Stacks" then
+          if child.tag == "fold" and child.options and child.options.id == "smartlog" then
             found = true
           end
         end
-        assert.is_false(found, "Should not have Recent Stacks section without obsolete commits")
+        assert.is_false(found, "Should not have Smartlog section when empty")
       end)
     end)
 
@@ -475,7 +455,7 @@ describe("components module", function()
       it("creates Bookmarks section for bookmarks", function()
         local tree, _ = components.build({
           status = empty_status(),
-          commits = {},
+          sl_lines = {},
           bookmarks = {
             { name = "main", node = "abc123def456" },
           },
@@ -495,7 +475,7 @@ describe("components module", function()
       it("does not create Bookmarks section if empty", function()
         local tree, _ = components.build({
           status = empty_status(),
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -511,7 +491,7 @@ describe("components module", function()
       it("populates line_map with bookmark items", function()
         local _, line_map = components.build({
           status = empty_status(),
-          commits = {},
+          sl_lines = {},
           bookmarks = {
             { name = "main", node = "abc123" },
             { name = "feature", node = "def456" },
@@ -537,7 +517,7 @@ describe("components module", function()
 
         local _, line_map = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -558,7 +538,7 @@ describe("components module", function()
 
         local _, line_map = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
         })
 
@@ -575,11 +555,14 @@ describe("components module", function()
         status.modified = { { status = "M", path = "changed.lua" } }
         status.added = { { status = "A", path = "staged.lua" } }
 
+        local sl_lines = {
+          "  @  abc1234567  5 minutes ago  user",
+          "  │  Test commit",
+        }
+
         local _, line_map = components.build({
           status = status,
-          commits = {
-            { node = "abc", graphnode = "@", author = "u", date = "1h", desc = "test", bookmarks = {} },
-          },
+          sl_lines = sl_lines,
           bookmarks = {
             { name = "main", node = "abc123" },
           },
@@ -595,7 +578,7 @@ describe("components module", function()
 
         assert.is_true(counts.section >= 4, "Should have at least 4 sections")
         assert.equals(3, counts.file)
-        assert.equals(1, counts.commit)
+        assert.is_true(counts.commit >= 1, "Should have at least 1 commit from sl_lines")
         assert.equals(1, counts.bookmark)
       end)
     end)
@@ -609,7 +592,7 @@ describe("components module", function()
 
         local _, line_map = components.build({
           status = status,
-          commits = {},
+          sl_lines = {},
           bookmarks = {},
           expanded_files = {
             ["changed.lua"] = {

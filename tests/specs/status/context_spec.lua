@@ -117,7 +117,7 @@ describe("context module", function()
         [1] = { type = "section", id = "untracked" },
         [2] = { type = "file", path = "file1.lua" },
         [3] = { type = "file", path = "file2.lua" },
-        [5] = { type = "section", id = "commits" },
+        [5] = { type = "section", id = "smartlog" },
         [6] = { type = "commit", commit = { node = "abc" } },
       }
 

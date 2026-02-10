@@ -249,7 +249,7 @@ local function close_default_collapsed(folds)
     -- Find and close sections that should be collapsed by default
     for _, region in ipairs(folds) do
       local item = line_map[region.start]
-      if item and item.type == "section" and (item.id == "Recent Stacks" or item.id == "Bookmarks") then
+      if item and item.type == "section" and item.id == "Bookmarks" then
         vim.api.nvim_win_call(win, function()
           vim.fn.cursor(region.start, 1)
           pcall(vim.cmd, "normal! zc")
@@ -278,18 +278,26 @@ function M._render()
   -- Build component tree with expanded files
   local build_data = {
     status = current_data.status,
-    commits = current_data.commits,
+    sl_lines = current_data.sl_lines,
     bookmarks = current_data.bookmarks,
     expanded_files = expanded_files,
   }
-  local tree, new_line_map = components.build(build_data)
+  local tree, new_line_map, extra_highlights = components.build(build_data)
   line_map = new_line_map
 
   -- Render to buffer
   local result = ui.render(tree)
   status_buffer:set_lines(result.lines)
   status_buffer:clear_highlights()
-  status_buffer:set_highlights(result.highlights)
+
+  -- Combine renderer highlights with extra highlights from sl parser
+  local all_highlights = result.highlights
+  if extra_highlights and #extra_highlights > 0 then
+    for _, hl in ipairs(extra_highlights) do
+      table.insert(all_highlights, hl)
+    end
+  end
+  status_buffer:set_highlights(all_highlights)
 
   -- Setup folds
   setup_folds(result.folds)
@@ -312,7 +320,7 @@ end
 local current_version = nil
 
 --- Refresh status data and re-render
---- All three CLI calls (status, smartlog, bookmarks) execute in parallel.
+--- All CLI calls (status, smartlog_sl, bookmarks) execute in parallel.
 --- A completion counter pattern collects results and renders when all finish.
 function M.refresh()
   local version = vim.loop.now()
@@ -328,7 +336,7 @@ function M.refresh()
 
     current_data = {
       status = results.status,
-      commits = results.commits or {},
+      sl_lines = results.sl_lines or {},
       bookmarks = results.bookmarks or {},
     }
 
@@ -348,10 +356,10 @@ function M.refresh()
     on_complete()
   end)
 
-  neosapling.sl.smartlog(function(commits, err)
+  neosapling.sl.smartlog_sl(function(sl_lines, err)
     if current_version ~= version then return end -- Stale
-    if err then commits = {} end -- Non-fatal: show status without smartlog
-    results.commits = commits
+    if err then sl_lines = {} end -- Non-fatal: show status without smartlog
+    results.sl_lines = sl_lines
     on_complete()
   end)
 

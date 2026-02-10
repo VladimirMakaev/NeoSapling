@@ -112,93 +112,74 @@ local function build_section(title, files, status_char, hl_group, section_id, li
   return section, current_line
 end
 
---- Build a commits section showing the current stack
----@param commits Commit[] Commits from smartlog
+--- Build the smartlog tree section using sl-format output with highlights and commit navigation
+---@param sl_lines string[] Raw lines from sl smartlog -T '{sl}'
 ---@param line_map table<number, Item> Line map to populate
 ---@param current_line number Current line number (1-indexed)
----@return Component|nil, number Commits section (nil if empty) and updated line number
-local function build_commits_section(commits, line_map, current_line)
-  -- Filter to current stack: commits where graphnode is not "x" (obsolete)
-  local stack_commits = {}
-  for _, commit in ipairs(commits) do
-    if commit.graphnode ~= "x" then
-      table.insert(stack_commits, commit)
+---@return Component|nil, number, table[] Smartlog section (nil if empty), updated line number, extra highlights
+local function build_smartlog_section(sl_lines, line_map, current_line)
+  if not sl_lines or #sl_lines == 0 then
+    return nil, current_line, {}
+  end
+
+  -- Filter out trailing empty lines
+  local clean_lines = {}
+  for _, line in ipairs(sl_lines) do
+    if line ~= "" or #clean_lines > 0 then
+      table.insert(clean_lines, line)
+    end
+  end
+  -- Remove trailing empties
+  while #clean_lines > 0 and clean_lines[#clean_lines] == "" do
+    table.remove(clean_lines)
+  end
+
+  if #clean_lines == 0 then
+    return nil, current_line, {}
+  end
+
+  -- Parse sl output using the ssl parser (same format on OSS)
+  local ssl_parser = require("neosapling.lib.parsers.smartlog_ssl")
+  local _, raw_highlights, sl_line_map = ssl_parser.build(clean_lines)
+
+  local section_start = current_line
+  line_map[section_start] = { type = "section", id = "smartlog" }
+
+  -- Build text components for each sl line, and translate line_map entries
+  local tree_rows = {}
+  local extra_highlights = {}
+  for i, line in ipairs(clean_lines) do
+    current_line = current_line + 1
+    table.insert(tree_rows, ui.text(line))
+
+    -- Transfer line map entries from ssl parser (adjusted to status buffer line numbers)
+    local sl_item = sl_line_map[i]
+    if sl_item then
+      line_map[current_line] = sl_item
     end
   end
 
-  if #stack_commits == 0 then
-    return nil, current_line
-  end
-
-  local section_start = current_line
-  line_map[section_start] = { type = "section", id = "commits" }
-
-  local commit_rows = {}
-  for _, commit in ipairs(stack_commits) do
-    current_line = current_line + 1
-    local graphnode_hl = commit.graphnode == "@" and "NeoSaplingCurrent" or "NeoSaplingHash"
-    table.insert(commit_rows, ui.row({
-      ui.text("  " .. commit.graphnode .. " ", { hl = graphnode_hl }),
-      ui.text(commit.node .. " ", { hl = "NeoSaplingHash" }),
-      ui.text(commit.desc),
-    }))
-    line_map[current_line] = { type = "commit", commit = commit }
+  -- Translate highlights from ssl parser (0-indexed lines relative to sl output)
+  -- to status buffer positions (offset by section_start)
+  for _, hl in ipairs(raw_highlights) do
+    table.insert(extra_highlights, {
+      line = hl.line + section_start, -- section_start is the header line, +1 for first content = section_start+1, but hl.line is already 0-indexed from ssl parser so line 0 = first sl line = section_start+1 in buffer = section_start in 0-indexed
+      col_start = hl.col_start,
+      col_end = hl.col_end,
+      hl = hl.hl,
+    })
   end
 
   local section = ui.fold(
     ui.row({
-      ui.text("Current Stack", { hl = "NeoSaplingSection" }),
-      ui.text(" (" .. #stack_commits .. " commits)"),
+      ui.text("Smartlog", { hl = "NeoSaplingSection" }),
+      ui.text(" (" .. #clean_lines .. " lines)"),
     }),
-    commit_rows,
-    { id = "commits" }
+    tree_rows,
+    { id = "smartlog" }
   )
 
-  return section, current_line
-end
-
---- Build a recent stacks section showing obsolete commits
----@param commits Commit[] Commits from smartlog
----@param line_map table<number, Item> Line map to populate
----@param current_line number Current line number (1-indexed)
----@return Component|nil, number Recent stacks section (nil if empty) and updated line number
-local function build_recent_stacks_section(commits, line_map, current_line)
-  -- Filter to obsolete commits: graphnode == "x"
-  local obsolete_commits = {}
-  for _, commit in ipairs(commits) do
-    if commit.graphnode == "x" then
-      table.insert(obsolete_commits, commit)
-    end
-  end
-
-  if #obsolete_commits == 0 then
-    return nil, current_line
-  end
-
-  local section_start = current_line
-  line_map[section_start] = { type = "section", id = "Recent Stacks" }
-
-  local commit_rows = {}
-  for _, commit in ipairs(obsolete_commits) do
-    current_line = current_line + 1
-    table.insert(commit_rows, ui.row({
-      ui.text("  x ", { hl = "NeoSaplingHash" }),
-      ui.text(commit.node .. " ", { hl = "NeoSaplingHash" }),
-      ui.text(commit.desc),
-    }))
-    line_map[current_line] = { type = "commit", commit = commit, section = "recent" }
-  end
-
-  local section = ui.fold(
-    ui.row({
-      ui.text("Recent Stacks", { hl = "NeoSaplingSection" }),
-      ui.text(" (" .. #obsolete_commits .. ")"),
-    }),
-    commit_rows,
-    { id = "Recent Stacks", folded = true }
-  )
-
-  return section, current_line
+  return section, current_line, extra_highlights
 end
 
 --- Build a bookmarks section
@@ -238,12 +219,13 @@ local function build_bookmarks_section(bookmarks, line_map, current_line)
 end
 
 --- Build status view component tree
----@param data {status: GroupedStatus, commits?: Commit[], bookmarks?: Bookmark[], expanded_files?: table<string, FileDiff>}
----@return Component, table<number, Item> tree and line mapping
+---@param data {status: GroupedStatus, sl_lines?: string[], bookmarks?: Bookmark[], expanded_files?: table<string, FileDiff>}
+---@return Component, table<number, Item>, table[] tree, line mapping, extra highlights
 function M.build(data)
   local line_map = {}
   local current_line = 1
   local expanded_files = data.expanded_files or {}
+  local extra_highlights = {}
 
   -- Separate modified files into staged vs unstaged
   local unstaged_modified = {}
@@ -335,31 +317,20 @@ function M.build(data)
     current_line = current_line + 1
   end
 
-  -- Current Stack section (commits from smartlog)
-  if data.commits and #data.commits > 0 then
-    local commits_section, line_after_commits = build_commits_section(
-      data.commits,
+  -- Smartlog tree section (sl-format graph tree)
+  if data.sl_lines and #data.sl_lines > 0 then
+    local smartlog_section, line_after_smartlog, sl_highlights = build_smartlog_section(
+      data.sl_lines,
       line_map,
       current_line
     )
-    if commits_section then
-      table.insert(children, commits_section)
-      current_line = line_after_commits
-      table.insert(children, ui.text(""))
-      current_line = current_line + 1
-    end
-  end
-
-  -- Recent Stacks section (obsolete commits, collapsed by default)
-  if data.commits and #data.commits > 0 then
-    local recent_section, line_after_recent = build_recent_stacks_section(
-      data.commits,
-      line_map,
-      current_line
-    )
-    if recent_section then
-      table.insert(children, recent_section)
-      current_line = line_after_recent
+    if smartlog_section then
+      table.insert(children, smartlog_section)
+      current_line = line_after_smartlog
+      -- Collect extra highlights from sl parser
+      for _, hl in ipairs(sl_highlights) do
+        table.insert(extra_highlights, hl)
+      end
       table.insert(children, ui.text(""))
       current_line = current_line + 1
     end
@@ -378,7 +349,7 @@ function M.build(data)
     end
   end
 
-  return ui.col(children), line_map
+  return ui.col(children), line_map, extra_highlights
 end
 
 return M

@@ -193,6 +193,13 @@ function CommandBuilder:rev(revision)
   return self:opt("-r", revision)
 end
 
+--- Add "-c" change flag (show changes introduced by a revision)
+---@param revision string Revision specifier
+---@return CommandBuilder self for chaining
+function CommandBuilder:change(revision)
+  return self:opt("-c", revision)
+end
+
 --- Add "-m" message flag
 ---@param message string Commit message
 ---@return CommandBuilder self for chaining

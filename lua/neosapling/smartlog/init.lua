@@ -22,6 +22,21 @@ local current_version = nil
 -- Flag for initial open cursor positioning (07-06 pattern)
 local is_initial_open = false
 
+--- Find the byte column of the hash in a commit line
+---@param lnum number 1-indexed line number
+---@return number col 0-indexed byte column of hash (or 0 if not found)
+local function find_hash_col(lnum)
+  if not smartlog_buffer or not smartlog_buffer:is_valid() then return 0 end
+  local lines = vim.api.nvim_buf_get_lines(smartlog_buffer.handle, lnum - 1, lnum, false)
+  if #lines == 0 then return 0 end
+  local item = line_map[lnum]
+  if item and item.commit and item.commit.node then
+    local start = lines[1]:find(item.commit.node, 1, true)
+    if start then return start - 1 end
+  end
+  return 0
+end
+
 --- Internal: Position cursor at the current (@) commit
 local function position_at_current_commit()
   if not smartlog_buffer or not smartlog_buffer:is_valid() then return end
@@ -31,9 +46,10 @@ local function position_at_current_commit()
   -- Look for @ (working copy) commit
   for lnum, item in pairs(line_map) do
     if item.type == "commit" and item.commit.graphnode == "@" then
+      local col = find_hash_col(lnum)
       for _, win in ipairs(wins) do
         if vim.api.nvim_win_is_valid(win) then
-          pcall(vim.api.nvim_win_set_cursor, win, { lnum, 0 })
+          pcall(vim.api.nvim_win_set_cursor, win, { lnum, col })
         end
       end
       return
@@ -43,9 +59,10 @@ local function position_at_current_commit()
   -- Fallback: look for commit with local_changes = true
   for lnum, item in pairs(line_map) do
     if item.type == "commit" and item.commit.local_changes then
+      local col = find_hash_col(lnum)
       for _, win in ipairs(wins) do
         if vim.api.nvim_win_is_valid(win) then
-          pcall(vim.api.nvim_win_set_cursor, win, { lnum, 0 })
+          pcall(vim.api.nvim_win_set_cursor, win, { lnum, col })
         end
       end
       return
@@ -96,7 +113,7 @@ local function setup_buffer()
     end
   end, { buffer = bufnr, desc = "Goto commit" })
 
-  -- J: jump to next commit line
+  -- J: jump to next commit line (cursor on hash)
   vim.keymap.set("n", "J", function()
     local lnum = vim.fn.line(".")
     local total = vim.fn.line("$")
@@ -104,21 +121,23 @@ local function setup_buffer()
     while target <= total do
       local item = line_map[target]
       if item and item.type == "commit" then
-        vim.api.nvim_win_set_cursor(0, { target, 0 })
+        local col = find_hash_col(target)
+        vim.api.nvim_win_set_cursor(0, { target, col })
         return
       end
       target = target + 1
     end
   end, { buffer = bufnr, desc = "Jump to next commit" })
 
-  -- K: jump to previous commit line
+  -- K: jump to previous commit line (cursor on hash)
   vim.keymap.set("n", "K", function()
     local lnum = vim.fn.line(".")
     local target = lnum - 1
     while target >= 1 do
       local item = line_map[target]
       if item and item.type == "commit" then
-        vim.api.nvim_win_set_cursor(0, { target, 0 })
+        local col = find_hash_col(target)
+        vim.api.nvim_win_set_cursor(0, { target, col })
         return
       end
       target = target - 1

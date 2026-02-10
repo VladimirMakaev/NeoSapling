@@ -30,7 +30,7 @@ function M.create(commit)
   return popups.show(p)
 end
 
---- Diff commit against its parent
+--- Diff commit against its parent (show changes introduced by this commit)
 ---@param commit SslCommit|CommitExtended
 function M._diff_vs_parent(commit)
   -- Try diffview.nvim first
@@ -46,9 +46,8 @@ function M._diff_vs_parent(commit)
 
   vim.notify("Loading diff vs parent...", vim.log.levels.INFO)
 
-  -- sl diff -r {node} shows changes introduced by the commit (diff against parent)
-  -- This works for all commits including root commits
-  neosapling.sl.diff({ rev = commit.node }, function(diffs, err)
+  -- sl diff -c {node} shows changes introduced by the commit (diff against parent)
+  neosapling.sl.diff({ change = commit.node }, function(diffs, err)
     if err then
       vim.notify("Diff failed: " .. err, vim.log.levels.ERROR)
       return
@@ -60,7 +59,7 @@ function M._diff_vs_parent(commit)
   end)
 end
 
---- Diff commit against working copy
+--- Diff commit against working copy (show what changed since this commit)
 ---@param commit SslCommit|CommitExtended
 function M._diff_vs_working(commit)
   -- Try diffview.nvim first
@@ -76,7 +75,7 @@ function M._diff_vs_working(commit)
 
   vim.notify("Loading diff vs working copy...", vim.log.levels.INFO)
 
-  -- Diff working copy against commit: what has changed since that commit
+  -- sl diff -r {node} shows working copy changes relative to that commit
   neosapling.sl.diff({ rev = commit.node }, function(diffs, err)
     if err then
       vim.notify("Diff failed: " .. err, vim.log.levels.ERROR)
