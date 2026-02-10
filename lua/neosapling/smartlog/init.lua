@@ -1,8 +1,10 @@
 --- Smartlog buffer module for NeoSapling.
 --- Orchestrates buffer lifecycle, data fetch, render, and keymap management.
+--- Phase 8.1: Rewritten to render ssl output directly with cursor positioning
+--- and commit-jumping navigation.
 --- @module neosapling.smartlog
 
-local ui = require("neosapling.lib.ui")
+local Buffer = require("neosapling.lib.ui.buffer")
 local neosapling = require("neosapling")
 local components = require("neosapling.smartlog.components")
 
@@ -16,6 +18,43 @@ local diff_buffer = nil
 
 -- Version token for preventing stale data from async operations
 local current_version = nil
+
+-- Flag for initial open cursor positioning (07-06 pattern)
+local is_initial_open = false
+
+--- Internal: Position cursor at the current (@) commit
+local function position_at_current_commit()
+  if not smartlog_buffer or not smartlog_buffer:is_valid() then return end
+  local wins = vim.fn.win_findbuf(smartlog_buffer.handle)
+  if #wins == 0 then return end
+
+  -- Look for @ (working copy) commit
+  for lnum, item in pairs(line_map) do
+    if item.type == "commit" and item.commit.graphnode == "@" then
+      for _, win in ipairs(wins) do
+        if vim.api.nvim_win_is_valid(win) then
+          pcall(vim.api.nvim_win_set_cursor, win, { lnum, 0 })
+        end
+      end
+      return
+    end
+  end
+
+  -- Fallback: look for commit with local_changes = true
+  for lnum, item in pairs(line_map) do
+    if item.type == "commit" and item.commit.local_changes then
+      for _, win in ipairs(wins) do
+        if vim.api.nvim_win_is_valid(win) then
+          pcall(vim.api.nvim_win_set_cursor, win, { lnum, 0 })
+        end
+      end
+      return
+    end
+  end
+end
+
+-- Expose for testability
+M._position_at_current_commit = position_at_current_commit
 
 --- Setup buffer options and keymaps
 local function setup_buffer()
@@ -38,29 +77,58 @@ local function setup_buffer()
     require("neosapling.popups.help").create()
   end, { buffer = bufnr, desc = "Open help popup" })
 
-  -- d opens diff popup
+  -- d opens diff popup — works on commit AND message lines
   vim.keymap.set("n", "d", function()
     local lnum = vim.fn.line(".")
     local item = line_map[lnum]
-    if item and item.type == "commit" then
+    if item and (item.type == "commit" or item.type == "message") then
       require("neosapling.popups.diff").create(item.commit)
     else
       vim.notify("No commit under cursor", vim.log.levels.INFO)
     end
   end, { buffer = bufnr, desc = "Open diff popup" })
 
-  -- Enter: goto commit under cursor
+  -- Enter: goto commit under cursor — works on commit AND message lines
   vim.keymap.set("n", "<CR>", function()
     local item = line_map[vim.fn.line(".")]
-    if item and item.type == "commit" then
+    if item and (item.type == "commit" or item.type == "message") then
       require("neosapling.actions.stack").goto_commit(item.commit.node)
     end
   end, { buffer = bufnr, desc = "Goto commit" })
 
-  -- H: hide commit with confirmation
+  -- J: jump to next commit line
+  vim.keymap.set("n", "J", function()
+    local lnum = vim.fn.line(".")
+    local total = vim.fn.line("$")
+    local target = lnum + 1
+    while target <= total do
+      local item = line_map[target]
+      if item and item.type == "commit" then
+        vim.api.nvim_win_set_cursor(0, { target, 0 })
+        return
+      end
+      target = target + 1
+    end
+  end, { buffer = bufnr, desc = "Jump to next commit" })
+
+  -- K: jump to previous commit line
+  vim.keymap.set("n", "K", function()
+    local lnum = vim.fn.line(".")
+    local target = lnum - 1
+    while target >= 1 do
+      local item = line_map[target]
+      if item and item.type == "commit" then
+        vim.api.nvim_win_set_cursor(0, { target, 0 })
+        return
+      end
+      target = target - 1
+    end
+  end, { buffer = bufnr, desc = "Jump to previous commit" })
+
+  -- H: hide commit with confirmation — works on commit AND message lines
   vim.keymap.set("n", "H", function()
     local item = line_map[vim.fn.line(".")]
-    if not item or item.type ~= "commit" then return end
+    if not item or (item.type ~= "commit" and item.type ~= "message") then return end
     local node = item.commit.node
     local prompt
     if item.commit.graphnode == "@" then
@@ -89,10 +157,10 @@ local function setup_buffer()
     require("neosapling.popups.commit").create()
   end, { buffer = bufnr, desc = "Open commit popup" })
 
-  -- G: graft commit with confirmation
+  -- G: graft commit with confirmation — works on commit AND message lines
   vim.keymap.set("n", "G", function()
     local item = line_map[vim.fn.line(".")]
-    if not item or item.type ~= "commit" then return end
+    if not item or (item.type ~= "commit" and item.type ~= "message") then return end
     local node = item.commit.node
     local choice = vim.fn.confirm("Graft commit " .. node:sub(1, 7) .. " to current location?", "&Yes\n&No", 2)
     if choice == 1 then
@@ -100,10 +168,10 @@ local function setup_buffer()
     end
   end, { buffer = bufnr, desc = "Graft commit" })
 
-  -- U: unhide commit
+  -- U: unhide commit — works on commit AND message lines
   vim.keymap.set("n", "U", function()
     local item = line_map[vim.fn.line(".")]
-    if not item or item.type ~= "commit" then return end
+    if not item or (item.type ~= "commit" and item.type ~= "message") then return end
     require("neosapling.actions.stack").unhide(item.commit.node)
   end, { buffer = bufnr, desc = "Unhide commit" })
 
@@ -123,13 +191,35 @@ function M._render()
     return
   end
 
-  local tree, new_line_map = components.build(current_data)
+  -- Save cursor position before render (cursor save/restore pattern from 07-06)
+  local cursor_pos = nil
+  local wins = vim.fn.win_findbuf(smartlog_buffer.handle)
+  if #wins > 0 and vim.api.nvim_win_is_valid(wins[1]) then
+    cursor_pos = vim.api.nvim_win_get_cursor(wins[1])
+  end
+
+  local lines, highlights, new_line_map = components.build(current_data)
   line_map = new_line_map
 
-  local result = ui.render(tree)
-  smartlog_buffer:set_lines(result.lines)
+  smartlog_buffer:set_lines(lines)
   smartlog_buffer:clear_highlights()
-  smartlog_buffer:set_highlights(result.highlights)
+  smartlog_buffer:set_highlights(highlights)
+
+  -- Restore cursor or position at @ commit
+  if cursor_pos and not is_initial_open then
+    -- Restore previous position (clamped to buffer bounds)
+    local max_line = #lines
+    local restore_line = math.min(cursor_pos[1], max_line)
+    for _, win in ipairs(wins) do
+      if vim.api.nvim_win_is_valid(win) then
+        pcall(vim.api.nvim_win_set_cursor, win, { restore_line, cursor_pos[2] })
+      end
+    end
+  else
+    -- Initial open: position at @ commit
+    position_at_current_commit()
+    is_initial_open = false
+  end
 end
 
 --- Refresh smartlog data and re-render
@@ -137,14 +227,14 @@ function M.refresh()
   local version = vim.loop.now()
   current_version = version
 
-  neosapling.sl.smartlog_extended(function(commits, err)
+  neosapling.sl.smartlog_ssl(function(ssl_lines, err)
     if current_version ~= version then return end -- Stale
     if err then
       vim.notify("NeoSapling: " .. err, vim.log.levels.ERROR)
       return
     end
 
-    current_data = { commits = commits }
+    current_data = ssl_lines  -- Raw lines, not wrapped in {commits: ...}
 
     vim.schedule(function()
       M._render()
@@ -156,9 +246,12 @@ end
 function M.open()
   -- Create or get existing buffer
   if not smartlog_buffer or not smartlog_buffer:is_valid() then
-    smartlog_buffer = ui.Buffer:new("neosapling://smartlog")
+    smartlog_buffer = Buffer:new("neosapling://smartlog")
     setup_buffer()
   end
+
+  -- Mark as initial open for cursor positioning
+  is_initial_open = true
 
   -- Show in a new tab (full screen, like Neogit)
   smartlog_buffer:show("tab")
@@ -222,7 +315,7 @@ end
 
 --- Display diff in a split buffer
 ---@param diffs FileDiff[] Parsed diff data
----@param commit CommitExtended The commit being diffed
+---@param commit SslCommit|CommitExtended The commit being diffed
 ---@param diff_type string Description of diff type (e.g., "vs parent", "vs working copy")
 function M._show_diff_buffer(diffs, commit, diff_type)
   -- Clean up previous diff buffer (Pitfall #5)
@@ -230,7 +323,7 @@ function M._show_diff_buffer(diffs, commit, diff_type)
     diff_buffer:destroy()
   end
 
-  diff_buffer = ui.Buffer:new("neosapling://diff/" .. commit.node:sub(1, 7))
+  diff_buffer = Buffer:new("neosapling://diff/" .. commit.node:sub(1, 7))
 
   local lines = {}
   local highlights = {}
@@ -245,7 +338,7 @@ function M._show_diff_buffer(diffs, commit, diff_type)
     hl = "NeoSaplingHeader",
   })
   line_num = line_num + 1
-  table.insert(lines, commit.desc)
+  table.insert(lines, commit.desc or "")
   line_num = line_num + 1
   table.insert(lines, "")
   line_num = line_num + 1

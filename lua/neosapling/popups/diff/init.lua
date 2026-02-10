@@ -8,7 +8,7 @@ local popups = require("neosapling.popups")
 local M = {}
 
 --- Create and show the diff popup for a commit
----@param commit CommitExtended The commit to diff
+---@param commit SslCommit|CommitExtended The commit to diff
 ---@return Buffer
 function M.create(commit)
   local short_hash = commit.node:sub(1, 7)
@@ -31,7 +31,7 @@ function M.create(commit)
 end
 
 --- Diff commit against its parent
----@param commit CommitExtended
+---@param commit SslCommit|CommitExtended
 function M._diff_vs_parent(commit)
   -- Try diffview.nvim first
   local split = require("neosapling.diff.split")
@@ -44,15 +44,10 @@ function M._diff_vs_parent(commit)
   local neosapling = require("neosapling")
   local smartlog = require("neosapling.smartlog")
 
-  -- Check if commit has a parent
-  if not commit.p1node then
-    vim.notify("No parent commit to diff against (this is a root commit)", vim.log.levels.WARN)
-    return
-  end
-
   vim.notify("Loading diff vs parent...", vim.log.levels.INFO)
 
-  -- Diff: show changes introduced by this commit
+  -- sl diff -r {node} shows changes introduced by the commit (diff against parent)
+  -- This works for all commits including root commits
   neosapling.sl.diff({ rev = commit.node }, function(diffs, err)
     if err then
       vim.notify("Diff failed: " .. err, vim.log.levels.ERROR)
@@ -66,7 +61,7 @@ function M._diff_vs_parent(commit)
 end
 
 --- Diff commit against working copy
----@param commit CommitExtended
+---@param commit SslCommit|CommitExtended
 function M._diff_vs_working(commit)
   -- Try diffview.nvim first
   local split = require("neosapling.diff.split")
