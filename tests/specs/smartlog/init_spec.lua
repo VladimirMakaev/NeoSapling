@@ -158,7 +158,7 @@ describe("neosapling.smartlog integration", function()
       assert.is_true(rendered, "Should have content after refresh")
     end)
 
-    -- The following tests require ssl template support (Meta-internal Sapling)
+    -- The following tests require ssl template support (internal Sapling builds)
     -- OSS Sapling's {ssl} template doesn't produce rich output
 
     it("line map contains commit entries with ssl support", function()

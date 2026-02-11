@@ -6,6 +6,12 @@ tmp/
 # Claude Code settings
 .claude/
 
+# Project planning docs (local only)
+.planning/
+
+# Collected diff samples (local development only)
+tests/fixtures/diffs/
+
 # Lua artifacts
 *.sw*
 .luarocks/
