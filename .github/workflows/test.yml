@@ -1,0 +1,36 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Neovim
+        uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: v0.10.3
+
+      - name: Install Sapling VCS
+        run: |
+          curl -LO https://github.com/facebook/sapling/releases/download/0.2.20240718-145624+f4e9df48/sapling_0.2.20240718-145624+f4e9df48_amd64.Ubuntu22.04.deb
+          sudo dpkg -i sapling_*.deb || sudo apt-get install -f -y
+
+      - name: Verify installs
+        run: |
+          nvim --version
+          sl version
+
+      - name: Configure Sapling for CI
+        run: |
+          sl config --user ui.username "CI <ci@test.com>"
+
+      - name: Run tests
+        run: make test
