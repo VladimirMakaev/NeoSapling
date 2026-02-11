@@ -256,23 +256,33 @@ function M.build(data)
   }))
   current_line = current_line + 1
 
-  -- Hint bar (line 2)
+  -- Hint bar (2 lines after header)
   local status_hints = {
-    { key = "?", action = "Help" },
-    { key = "c", action = "Commit" },
-    { key = "s", action = "Stage" },
-    { key = "u", action = "Unstage" },
-    { key = "x", action = "Discard" },
-    { key = "d", action = "Diff" },
-    { key = "p", action = "Pull" },
-    { key = "q", action = "Close" },
+    {
+      { key = "c", action = "Commit" },
+      { key = "s", action = "Stage" },
+      { key = "u", action = "Unstage" },
+      { key = "x", action = "Discard" },
+      { key = "d", action = "Diff" },
+      { key = "p", action = "Pull" },
+    },
+    {
+      { key = "↓", action = "Next commit" },
+      { key = "↑", action = "Prev commit" },
+      { key = "{", action = "Prev section" },
+      { key = "}", action = "Next section" },
+      { key = "?", action = "Help" },
+      { key = "q", action = "Close" },
+    },
   }
-  local hint_line, hint_hls = hintbar.build(status_hints, current_line - 1) -- 0-indexed
-  table.insert(children, ui.text(hint_line))
+  local hint_lines, hint_hls = hintbar.build(status_hints, current_line - 1) -- 0-indexed
   for _, hl in ipairs(hint_hls) do
     table.insert(extra_highlights, hl)
   end
-  current_line = current_line + 1
+  for _, line in ipairs(hint_lines) do
+    table.insert(children, ui.text(line))
+    current_line = current_line + 1
+  end
 
   -- Empty line after hint bar
   table.insert(children, ui.text(""))

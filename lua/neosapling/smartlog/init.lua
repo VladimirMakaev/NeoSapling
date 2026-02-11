@@ -220,29 +220,42 @@ function M._render()
 
   local lines, highlights, new_line_map = components.build(current_data)
 
-  -- Prepend hint bar (line 1) + blank line (line 2) before smartlog content
+  -- Prepend hint bar (2 lines) + blank line before smartlog content
   local smartlog_hints = {
-    { key = "?", action = "Help" },
-    { key = "c", action = "Commit" },
-    { key = "d", action = "Diff" },
-    { key = "J", action = "Next" },
-    { key = "K", action = "Prev" },
-    { key = "p", action = "Pull" },
-    { key = "q", action = "Close" },
+    {
+      { key = "c", action = "Commit" },
+      { key = "d", action = "Diff" },
+      { key = "H", action = "Hide" },
+      { key = "r", action = "Rebase" },
+      { key = "p", action = "Pull" },
+    },
+    {
+      { key = "↓", action = "Next commit" },
+      { key = "↑", action = "Prev commit" },
+      { key = "⏎", action = "Goto" },
+      { key = "?", action = "Help" },
+      { key = "q", action = "Close" },
+    },
   }
-  local hint_line, hint_hls = hintbar.build(smartlog_hints, 0)
-  table.insert(lines, 1, hint_line)
-  table.insert(lines, 2, "")
+  local hint_lines, hint_hls = hintbar.build(smartlog_hints, 0)
+  -- Insert hint lines at the top (in reverse so positions are correct)
+  for i = #hint_lines, 1, -1 do
+    table.insert(lines, 1, hint_lines[i])
+  end
+  -- Blank line after hint bar
+  local hint_line_count = #hint_lines
+  table.insert(lines, hint_line_count + 1, "")
+  local offset = hint_line_count + 1 -- hint lines + blank line
 
-  -- Offset ALL existing highlights by +2 for the 2 prepended lines
+  -- Offset ALL existing highlights by +offset for the prepended lines
   for _, hl in ipairs(highlights) do
-    hl.line = hl.line + 2
+    hl.line = hl.line + offset
   end
 
-  -- Offset ALL line_map keys by +2
+  -- Offset ALL line_map keys by +offset
   local offset_map = {}
   for k, v in pairs(new_line_map) do
-    offset_map[k + 2] = v
+    offset_map[k + offset] = v
   end
 
   -- Add hint bar highlights
@@ -356,13 +369,11 @@ function M._setup_diff_buffer_keymaps()
   local bufnr = diff_buffer.handle
 
   -- q closes diff tab and returns to previous tab
-  vim.keymap.set("n", "q", function()
+  local function close_diff_tab()
     if diff_buffer and diff_buffer:is_valid() then
+      -- Find the tab containing the diff buffer and close it first
+      -- (before destroying the buffer, to avoid orphaned empty tabs)
       local wins = vim.fn.win_findbuf(diff_buffer.handle)
-      diff_buffer:destroy()
-      diff_buffer = nil
-
-      -- Close the diff tab if we have multiple tabs
       if vim.fn.tabpagenr('$') > 1 then
         for _, win in ipairs(wins) do
           if vim.api.nvim_win_is_valid(win) then
@@ -372,8 +383,22 @@ function M._setup_diff_buffer_keymaps()
           end
         end
       end
+      diff_buffer:destroy()
+      diff_buffer = nil
+    else
+      -- Fallback: if diff_buffer is gone but we're still in a diff tab, just close it
+      if vim.fn.tabpagenr('$') > 1 then
+        pcall(vim.cmd, "tabclose")
+      end
     end
-  end, { buffer = bufnr, desc = "Close diff buffer" })
+  end
+  vim.keymap.set("n", "q", close_diff_tab, { buffer = bufnr, nowait = true, desc = "Close diff buffer" })
+  -- Also set q on the current window's buffer in case filetype autocmds
+  -- caused a different buffer to become current in this tab
+  local cur_buf = vim.api.nvim_get_current_buf()
+  if cur_buf ~= bufnr then
+    vim.keymap.set("n", "q", close_diff_tab, { buffer = cur_buf, nowait = true, desc = "Close diff buffer" })
+  end
 end
 
 --- Display diff in a split buffer
