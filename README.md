@@ -1,3 +1,5 @@
+[![Tests](https://github.com/VladimirMakaev/NeoSapling/actions/workflows/test.yml/badge.svg)](https://github.com/VladimirMakaev/NeoSapling/actions/workflows/test.yml)
+
 # NeoSapling
 
 Sapling VCS integration for Neovim -- a Magit/Neogit-style interface for the [Sapling](https://sapling-scm.com/) source control system.
