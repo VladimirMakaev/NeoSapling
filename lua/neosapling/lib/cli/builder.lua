@@ -163,6 +163,12 @@ function CommandBuilder:bookmark()
   return self:arg("bookmark")
 end
 
+--- Add "metaedit" subcommand
+---@return CommandBuilder self for chaining
+function CommandBuilder:metaedit()
+  return self:arg("metaedit")
+end
+
 -- =============================================================================
 -- Flag convenience methods
 -- =============================================================================

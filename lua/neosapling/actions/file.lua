@@ -4,6 +4,7 @@
 
 local cli = require("neosapling.lib.cli")
 local staged = require("neosapling.status.staged")
+local watcher = require("neosapling.lib.watcher")
 
 local M = {}
 
@@ -114,13 +115,16 @@ function M.discard(file, callback)
     callback()
   else
     -- Tracked: sl revert --no-backup
+    watcher.pause()
     cli.revert():opt("--no-backup"):file(file.path):call({}, function(result)
       if result.code == 0 then
         -- Clear from virtual staging if present
         staged.unstage(file.path)
+        watcher.resume()
         schedule_refresh()
         vim.schedule(callback)
       else
+        watcher.resume()
         vim.schedule(function()
           vim.notify("Failed to revert file: " .. file.path, vim.log.levels.ERROR)
         end)

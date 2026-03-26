@@ -206,4 +206,10 @@ function M.graft(node)
   end)
 end
 
+--- Edit any commit's message interactively using buffer-based editor.
+---@param node string Revision identifier to metaedit
+function M.metaedit_interactive(node)
+  require("neosapling.commit.editor").open({ metaedit = true, node = node })
+end
+
 return M

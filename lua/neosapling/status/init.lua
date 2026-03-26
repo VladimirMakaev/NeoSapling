@@ -22,6 +22,27 @@ local cache_valid = false
 -- Track initial open vs refresh to avoid re-collapsing default-collapsed sections
 local is_initial_open = false
 
+--- Internal: Position cursor at the current (@) commit in status and center viewport
+function M._position_at_current_commit()
+  if not status_buffer or not status_buffer:is_valid() then return end
+  local win = vim.fn.bufwinid(status_buffer.handle)
+  if win == -1 then return end
+
+  for lnum, item in pairs(line_map) do
+    if item.type == "commit" and item.commit and item.commit.graphnode == "@" then
+      local col = 0
+      local lines = vim.api.nvim_buf_get_lines(status_buffer.handle, lnum - 1, lnum, false)
+      if #lines > 0 and item.commit.node then
+        local start = lines[1]:find(item.commit.node, 1, true)
+        if start then col = start - 1 end
+      end
+      pcall(vim.api.nvim_win_set_cursor, win, { lnum, col })
+      vim.api.nvim_win_call(win, function() vim.cmd("normal! zz") end)
+      return
+    end
+  end
+end
+
 --- Global foldexpr function (must be global for v:lua access)
 ---@param lnum number Line number (1-indexed)
 ---@return string Fold level expression
@@ -51,22 +72,87 @@ local function toggle_file_expand(file)
     return
   end
 
-  -- Fetch diff for this file
-  neosapling.sl.diff({ files = { path } }, function(diffs, err)
-    if err or #diffs == 0 then
-      -- No diff available (new file, etc.) - just mark as expanded with empty diff
+  if file.status == "?" then
+    -- Untracked: read file content and format as synthetic + lines
+    local ok, lines = pcall(vim.fn.readfile, path)
+    if ok and #lines > 0 then
+      local hunk_lines = {}
+      for _, line in ipairs(lines) do
+        table.insert(hunk_lines, "+" .. line)
+      end
+      expanded_files[path] = {
+        hunks = {{
+          old_start = 0,
+          old_count = 0,
+          new_start = 1,
+          new_count = #lines,
+          lines = hunk_lines,
+        }},
+      }
+    else
+      expanded_files[path] = { hunks = {} }
+    end
+    M._render()
+  elseif file.status == "R" then
+    -- Removed: fetch committed content via sl cat and format as - lines
+    local cli = require("neosapling.lib.cli")
+    cli.run({ "sl", "cat", "-r", ".", path }, {}, function(result)
       vim.schedule(function()
-        expanded_files[path] = { hunks = {} }
+        if result.code == 0 and #result.stdout > 0 then
+          local hunk_lines = {}
+          for _, line in ipairs(result.stdout) do
+            table.insert(hunk_lines, "-" .. line)
+          end
+          expanded_files[path] = {
+            hunks = {{
+              old_start = 1,
+              old_count = #result.stdout,
+              new_start = 0,
+              new_count = 0,
+              lines = hunk_lines,
+            }},
+          }
+        else
+          expanded_files[path] = { hunks = {} }
+        end
         M._render()
       end)
-      return
-    end
-
-    vim.schedule(function()
-      expanded_files[path] = diffs[1]
-      M._render()
     end)
-  end)
+  else
+    -- Modified (M), Added (A): use sl diff
+    neosapling.sl.diff({ files = { path } }, function(diffs, err)
+      vim.schedule(function()
+        if err or #diffs == 0 then
+          -- Fallback for Added files: read file content
+          if file.status == "A" then
+            local ok, lines = pcall(vim.fn.readfile, path)
+            if ok and #lines > 0 then
+              local hunk_lines = {}
+              for _, line in ipairs(lines) do
+                table.insert(hunk_lines, "+" .. line)
+              end
+              expanded_files[path] = {
+                hunks = {{
+                  old_start = 0,
+                  old_count = 0,
+                  new_start = 1,
+                  new_count = #lines,
+                  lines = hunk_lines,
+                }},
+              }
+            else
+              expanded_files[path] = { hunks = {} }
+            end
+          else
+            expanded_files[path] = { hunks = {} }
+          end
+        else
+          expanded_files[path] = diffs[1]
+        end
+        M._render()
+      end)
+    end)
+  end
 end
 
 --- Setup buffer options and keymaps
@@ -187,7 +273,7 @@ local function setup_buffer()
     end
   end, { buffer = bufnr, desc = "Next section" })
 
-  -- Enter: goto commit or bookmark under cursor
+  -- Enter: goto commit or bookmark under cursor, or open file
   vim.keymap.set("n", "<CR>", function()
     local context = require("neosapling.status.context")
     local item = context.get_item_at_cursor(line_map)
@@ -196,8 +282,10 @@ local function setup_buffer()
       require("neosapling.actions.stack").goto_commit(item.commit.node)
     elseif item.type == "bookmark" then
       require("neosapling.actions.stack").goto_commit(item.bookmark.node)
+    elseif item.type == "file" and item.file then
+      vim.cmd("tabedit " .. vim.fn.fnameescape(item.file.path))
     end
-  end, { buffer = bufnr, desc = "Goto commit or bookmark" })
+  end, { buffer = bufnr, desc = "Goto commit or bookmark, or open file" })
 
   -- Ctrl-r: manual refresh
   vim.keymap.set("n", "<C-r>", function()
@@ -261,6 +349,15 @@ local function setup_buffer()
       require("neosapling.popups.diff").create(item.commit)
     end
   end, { buffer = bufnr, desc = "Show file diff or open diff popup" })
+
+  -- E: metaedit commit message — works on commit lines
+  vim.keymap.set("n", "E", function()
+    local context = require("neosapling.status.context")
+    local item = context.get_item_at_cursor(line_map)
+    if item and item.type == "commit" and item.commit then
+      require("neosapling.actions.stack").metaedit_interactive(item.commit.node)
+    end
+  end, { buffer = bufnr, desc = "Metaedit commit message" })
 end
 
 --- Setup folds for status buffer
@@ -346,6 +443,8 @@ function M._render()
   -- Close sections that should be collapsed by default (only on initial open)
   if is_initial_open then
     close_default_collapsed(result.folds)
+    -- Position at @ commit and center viewport
+    M._position_at_current_commit()
     is_initial_open = false
   end
 
@@ -360,25 +459,39 @@ end
 -- Version token for preventing stale data from async operations
 local current_version = nil
 
+-- Cache for smartlog and bookmark data (avoid re-fetching on file-only changes)
+local cached_sl_lines = nil
+local cached_bookmarks = nil
+
 --- Refresh status data and re-render
 --- All CLI calls (status, smartlog_sl, bookmarks) execute in parallel.
 --- A completion counter pattern collects results and renders when all finish.
-function M.refresh()
+---@param opts? {full?: boolean} Options. full=true (default) re-fetches all data, false only re-fetches status.
+function M.refresh(opts)
+  opts = opts or {}
+  local full = opts.full ~= false -- default true
+
   local version = vim.loop.now()
   current_version = version
 
   local results = {}
-  local pending = 3 -- Number of parallel CLI calls
+  local pending = full and 3 or 1
 
   local function on_complete()
     pending = pending - 1
     if pending > 0 then return end
     if current_version ~= version then return end -- Stale
 
+    -- Update caches when full refresh
+    if full then
+      cached_sl_lines = results.sl_lines or {}
+      cached_bookmarks = results.bookmarks or {}
+    end
+
     current_data = {
       status = results.status,
-      sl_lines = results.sl_lines or {},
-      bookmarks = results.bookmarks or {},
+      sl_lines = full and (results.sl_lines or {}) or (cached_sl_lines or {}),
+      bookmarks = full and (results.bookmarks or {}) or (cached_bookmarks or {}),
     }
 
     vim.schedule(function()
@@ -386,7 +499,7 @@ function M.refresh()
     end)
   end
 
-  -- All three fire simultaneously
+  -- Status is always fetched
   neosapling.sl.status(function(grouped_status, err)
     if current_version ~= version then return end -- Stale
     if err then
@@ -397,19 +510,21 @@ function M.refresh()
     on_complete()
   end)
 
-  neosapling.sl.smartlog_sl(function(sl_lines, err)
-    if current_version ~= version then return end -- Stale
-    if err then sl_lines = {} end -- Non-fatal: show status without smartlog
-    results.sl_lines = sl_lines
-    on_complete()
-  end)
+  if full then
+    neosapling.sl.smartlog_sl(function(sl_lines, err)
+      if current_version ~= version then return end -- Stale
+      if err then sl_lines = {} end -- Non-fatal: show status without smartlog
+      results.sl_lines = sl_lines
+      on_complete()
+    end)
 
-  neosapling.sl.bookmarks(function(bookmarks, err)
-    if current_version ~= version then return end -- Stale
-    if err then bookmarks = {} end -- Non-fatal: show status without bookmarks
-    results.bookmarks = bookmarks
-    on_complete()
-  end)
+    neosapling.sl.bookmarks(function(bookmarks, err)
+      if current_version ~= version then return end -- Stale
+      if err then bookmarks = {} end -- Non-fatal: show status without bookmarks
+      results.bookmarks = bookmarks
+      on_complete()
+    end)
+  end
 end
 
 --- Open the status buffer
@@ -457,6 +572,8 @@ function M.close()
   line_map = {}
   fold_regions = {}
   expanded_files = {}
+  cached_sl_lines = nil
+  cached_bookmarks = nil
   cache_valid = false
   is_initial_open = false
 end

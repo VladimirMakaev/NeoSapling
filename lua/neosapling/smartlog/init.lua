@@ -51,6 +51,7 @@ local function position_at_current_commit()
       for _, win in ipairs(wins) do
         if vim.api.nvim_win_is_valid(win) then
           pcall(vim.api.nvim_win_set_cursor, win, { lnum, col })
+          vim.api.nvim_win_call(win, function() vim.cmd("normal! zz") end)
         end
       end
       return
@@ -64,6 +65,7 @@ local function position_at_current_commit()
       for _, win in ipairs(wins) do
         if vim.api.nvim_win_is_valid(win) then
           pcall(vim.api.nvim_win_set_cursor, win, { lnum, col })
+          vim.api.nvim_win_call(win, function() vim.cmd("normal! zz") end)
         end
       end
       return
@@ -203,6 +205,16 @@ local function setup_buffer()
       end
     end)
   end, { buffer = bufnr, desc = "Rebase" })
+
+  -- E: metaedit commit message — works on commit AND message lines
+  vim.keymap.set("n", "E", function()
+    local item = line_map[vim.fn.line(".")]
+    if item and (item.type == "commit" or item.type == "message") and item.commit then
+      require("neosapling.actions.stack").metaedit_interactive(item.commit.node)
+    else
+      vim.notify("No commit under cursor", vim.log.levels.INFO)
+    end
+  end, { buffer = bufnr, desc = "Metaedit commit message" })
 end
 
 --- Internal: Render current data to buffer
@@ -225,6 +237,7 @@ function M._render()
     {
       { key = "c", action = "Commit" },
       { key = "d", action = "Diff" },
+      { key = "E", action = "Metaedit" },
       { key = "H", action = "Hide" },
       { key = "r", action = "Rebase" },
       { key = "p", action = "Pull" },
@@ -476,7 +489,8 @@ function M._show_diff_buffer(diffs, commit, diff_type)
         line = line_num,
         col_start = 0,
         col_end = #hunk_header,
-        hl = "NeoSaplingSection",
+        hl = "NeoSaplingDiffHunkHeader",
+        hl_eol = true,
       })
       line_num = line_num + 1
 
@@ -485,9 +499,9 @@ function M._show_diff_buffer(diffs, commit, diff_type)
         table.insert(lines, diff_line)
         local hl = nil
         if diff_line:sub(1, 1) == "+" then
-          hl = "DiffAdd"
+          hl = "NeoSaplingDiffAdd"
         elseif diff_line:sub(1, 1) == "-" then
-          hl = "DiffDelete"
+          hl = "NeoSaplingDiffDelete"
         end
         if hl then
           table.insert(highlights, {
@@ -495,6 +509,7 @@ function M._show_diff_buffer(diffs, commit, diff_type)
             col_start = 0,
             col_end = #diff_line,
             hl = hl,
+            hl_eol = true,
           })
         end
         line_num = line_num + 1

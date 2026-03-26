@@ -229,7 +229,7 @@ describe("status module", function()
       assert.is_true(found_modified, "Should show modified test.txt")
     end)
 
-    it("shows Current Stack with commit", function()
+    it("shows Smartlog section with commit", function()
       if not harness.sl_available() then
         pending("sl not available")
         return
@@ -242,7 +242,7 @@ describe("status module", function()
         if buf == -1 then return false end
         local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
         for _, line in ipairs(lines) do
-          if line:match("Current Stack") then return true end
+          if line:match("Smartlog") then return true end
         end
         return false
       end)
@@ -252,12 +252,12 @@ describe("status module", function()
 
       local found_stack = false
       for _, line in ipairs(lines) do
-        if line:match("Current Stack") then
+        if line:match("Smartlog") then
           found_stack = true
           break
         end
       end
-      assert.is_true(found_stack, "Should show Current Stack section")
+      assert.is_true(found_stack, "Should show Smartlog section")
     end)
   end)
 

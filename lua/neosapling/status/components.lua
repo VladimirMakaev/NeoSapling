@@ -46,7 +46,7 @@ local function build_file_entry(file, diff, status_char, hl_group, section_id, l
     -- Hunk header
     current_line = current_line + 1
     local hunk_header = ui.row({
-      ui.text("    @@ ", { hl = "NeoSaplingHash" }),
+      ui.text("    @@ ", { hl = "NeoSaplingDiffHunkHeader" }),
       ui.text("-" .. hunk.old_start .. "," .. hunk.old_count .. " +" .. hunk.new_start .. "," .. hunk.new_count),
     })
     table.insert(hunk_children, hunk_header)
@@ -57,9 +57,9 @@ local function build_file_entry(file, diff, status_char, hl_group, section_id, l
       current_line = current_line + 1
       local hl = nil
       if line:sub(1, 1) == "+" then
-        hl = "DiffAdd"
+        hl = "NeoSaplingDiffAdd"
       elseif line:sub(1, 1) == "-" then
-        hl = "DiffDelete"
+        hl = "NeoSaplingDiffDelete"
       end
       table.insert(hunk_children, ui.text("      " .. line, { hl = hl }))
       line_map[current_line] = { type = "diff_line", line = line, file = file, section = section_id }

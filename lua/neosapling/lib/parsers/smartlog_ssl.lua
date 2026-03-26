@@ -42,8 +42,14 @@ function M.classify_line(line, prev_commit)
   end
 
   -- Try to find graphnode + hash pattern
-  -- Pattern: {any graph prefix}{graphnode: o|@|x possibly with *}{2 spaces}{10 hex chars}{2 spaces}{metadata}
-  local prefix, graphnode, hash, metadata = line:match("^(.-)([o@x]%*?)  (%x%x%x%x%x%x%x%x%x%x)  (.+)$")
+  -- Pattern: {any graph prefix}{graphnode: o|@|x|O possibly with *}{2 spaces}{hex hash (8-12 chars)}{2 spaces}{metadata}
+  -- Broadened graphnode set and flexible hash length for robustness
+  local prefix, graphnode, hash, metadata = line:match("^(.-)([o@xO]%*?)  (%x%x%x%x%x%x%x%x%x?%x?%x?%x?)  (.+)$")
+
+  -- Fallback: try matching with single space separators (some Sapling configs)
+  if not hash then
+    prefix, graphnode, hash, metadata = line:match("^(.-)([o@xO]%*?) (%x%x%x%x%x%x%x%x%x?%x?%x?%x?)  (.+)$")
+  end
 
   if hash then
     -- This is a commit header line
@@ -176,6 +182,17 @@ end
 ---@param line string The raw line text
 ---@param commit SslCommit Parsed commit data
 local function add_commit_highlights(highlights, line_0idx, line, commit)
+  -- Full-line background highlight for current commit (@)
+  if commit.graphnode == "@" then
+    table.insert(highlights, {
+      line = line_0idx,
+      col_start = 0,
+      col_end = 0,
+      hl = "NeoSaplingCurrentLine",
+      line_hl_group = "NeoSaplingCurrentLine",
+    })
+  end
+
   -- Find hash position (byte offsets from string.find, 1-indexed)
   local hash_start, hash_end = line:find(commit.node, 1, true)
   if hash_start then
@@ -296,7 +313,19 @@ end
 ---@param highlights table[] Highlight accumulator
 ---@param line_0idx number 0-indexed line number
 ---@param line string The raw line text
-local function add_message_highlights(highlights, line_0idx, line)
+---@param commit SslCommit|nil Commit associated with this message line
+local function add_message_highlights(highlights, line_0idx, line, commit)
+  -- Full-line background highlight for current commit (@) message lines
+  if commit and commit.graphnode == "@" then
+    table.insert(highlights, {
+      line = line_0idx,
+      col_start = 0,
+      col_end = 0,
+      hl = "NeoSaplingCurrentLine",
+      line_hl_group = "NeoSaplingCurrentLine",
+    })
+  end
+
   -- Find the start of actual message content (after graph prefix)
   -- Graph prefix consists of Unicode box-drawing chars + spaces
   -- Find first non-graph, non-space character
@@ -383,7 +412,7 @@ function M.build(ssl_lines)
         current_commit.desc = pure_msg
       end
       line_map[i] = { type = "message", commit = current_commit }
-      add_message_highlights(highlights, i - 1, line)
+      add_message_highlights(highlights, i - 1, line, current_commit)
     end
     -- graph_only lines: no line_map entry, no special highlights
   end

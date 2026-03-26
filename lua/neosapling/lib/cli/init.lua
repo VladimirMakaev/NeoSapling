@@ -143,6 +143,13 @@ function M.bookmarks()
   return CommandBuilder:new(runner):bookmark()
 end
 
+--- Create a metaedit command builder
+--- Usage: sl.metaedit():rev("abc123"):opt("-l", tmpfile):call({}, callback)
+---@return CommandBuilder Pre-configured builder with "metaedit" subcommand
+function M.metaedit()
+  return CommandBuilder:new(runner):metaedit()
+end
+
 -- =============================================================================
 -- Low-level access for advanced usage
 -- =============================================================================

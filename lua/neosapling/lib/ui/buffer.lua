@@ -86,14 +86,21 @@ function Buffer:add_highlight(line, col_start, col_end, hl_group)
 end
 
 --- Apply multiple highlights in a single batch
----@param highlights table[] Array of {line, col_start, col_end, hl} entries
+---@param highlights table[] Array of {line, col_start, col_end, hl, line_hl_group?, hl_eol?} entries
 function Buffer:set_highlights(highlights)
   if not self:is_valid() then return end
   for _, hl in ipairs(highlights) do
-    api.nvim_buf_set_extmark(self.handle, self.namespace, hl.line, hl.col_start, {
+    local extmark_opts = {
       end_col = hl.col_end,
       hl_group = hl.hl,
-    })
+    }
+    if hl.line_hl_group then
+      extmark_opts.line_hl_group = hl.line_hl_group
+    end
+    if hl.hl_eol then
+      extmark_opts.hl_eol = true
+    end
+    api.nvim_buf_set_extmark(self.handle, self.namespace, hl.line, hl.col_start, extmark_opts)
   end
 end
 

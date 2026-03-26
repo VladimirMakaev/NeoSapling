@@ -30,27 +30,21 @@ function M.is_available()
   return available
 end
 
---- Schedule a dual-view refresh of both status and smartlog.
---- Same pattern as actions/stack.lua schedule_refresh.
-local function schedule_refresh()
-  vim.schedule(function()
-    local ok1, status = pcall(require, "neosapling.status")
-    if ok1 and status.refresh then
-      status.refresh()
-    end
-    local ok2, smartlog = pcall(require, "neosapling.smartlog")
-    if ok2 and smartlog.refresh then
-      smartlog.refresh()
-    end
-  end)
-end
+-- Track whether the latest notification includes .sl/ changes
+local last_notification_has_sl_changes = false
 
 --- Handle a Watchman notification by debouncing and refreshing.
 --- Restarts the debounce timer on each notification so rapid changes
 --- (e.g., checkout touching many files) result in a single refresh.
-local function on_notification()
+---@param has_sl_changes boolean Whether .sl/ directory changes were detected
+local function on_notification(has_sl_changes)
   if paused then
     return
+  end
+
+  -- Track if any notification in the debounce window includes .sl/ changes
+  if has_sl_changes then
+    last_notification_has_sl_changes = true
   end
 
   -- Create timer if needed
@@ -62,7 +56,23 @@ local function on_notification()
   debounce_timer:stop()
   debounce_timer:start(200, 0, function()
     debounce_timer:stop()
-    schedule_refresh()
+    local full = last_notification_has_sl_changes
+    last_notification_has_sl_changes = false
+
+    vim.schedule(function()
+      -- Status-only refresh for file changes, full refresh for .sl/ changes
+      local ok1, status = pcall(require, "neosapling.status")
+      if ok1 and status.refresh then
+        status.refresh({ full = full })
+      end
+      -- Smartlog always gets a full refresh when it refreshes
+      if full then
+        local ok2, smartlog = pcall(require, "neosapling.smartlog")
+        if ok2 and smartlog.refresh then
+          smartlog.refresh()
+        end
+      end
+    end)
   end)
 end
 
@@ -119,16 +129,42 @@ local function start_subscription()
           if line ~= "" then
             local ok, decoded = pcall(vim.json.decode, line)
             if ok and decoded and decoded.subscription then
-              -- This is a file change notification
-              on_notification()
+              -- Check if any changed files are in .sl/ directory
+              local has_sl = false
+              if decoded.files then
+                for _, f in ipairs(decoded.files) do
+                  if type(f) == "table" and f.name and f.name:match("^%.sl/") then
+                    has_sl = true
+                    break
+                  elseif type(f) == "string" and f:match("^%.sl/") then
+                    has_sl = true
+                    break
+                  end
+                end
+              end
+              on_notification(has_sl)
+            elseif ok and decoded and decoded.error then
+              vim.schedule(function()
+                vim.notify("NeoSapling watcher error: " .. decoded.error, vim.log.levels.WARN)
+              end)
             end
           end
         end
       end,
+      stderr = function(_, data)
+        if data and data ~= "" then
+          vim.schedule(function()
+            vim.notify("NeoSapling watcher stderr: " .. vim.trim(data), vim.log.levels.DEBUG)
+          end)
+        end
+      end,
     },
-    function(_)
-      -- Process exited - clean up state
+    function(obj)
+      -- Process exited - clean up state and log exit code
       vim.schedule(function()
+        if obj.code ~= 0 then
+          vim.notify("NeoSapling watcher exited with code " .. tostring(obj.code), vim.log.levels.DEBUG)
+        end
         subscription_name = nil
         watch_process = nil
       end)
@@ -221,6 +257,40 @@ function M.resume()
     pause_timer:close()
     pause_timer = nil
   end
+end
+
+--- Check if the watcher is active (subscription running).
+---@return boolean
+function M.is_active()
+  return subscription_name ~= nil and watch_process ~= nil
+end
+
+--- Get watcher status info for diagnostics.
+---@return table {available: boolean, active: boolean, paused: boolean, views: table}
+function M.get_status()
+  return {
+    available = M.is_available(),
+    active = M.is_active(),
+    paused = paused,
+    subscription = subscription_name,
+    views = vim.deepcopy(open_buffers),
+  }
+end
+
+--- Setup the :NeoSaplingWatcher user command for diagnostics.
+function M.setup_command()
+  vim.api.nvim_create_user_command("NeoSaplingWatcher", function()
+    local status = M.get_status()
+    local lines = {
+      "NeoSapling Watcher Status:",
+      "  Watchman available: " .. tostring(status.available),
+      "  Subscription active: " .. tostring(status.active),
+      "  Paused: " .. tostring(status.paused),
+      "  Subscription name: " .. (status.subscription or "none"),
+      "  Open views: status=" .. tostring(status.views.status) .. ", smartlog=" .. tostring(status.views.smartlog),
+    }
+    vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
+  end, { desc = "Show NeoSapling watcher status" })
 end
 
 return M

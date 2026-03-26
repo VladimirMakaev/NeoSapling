@@ -52,6 +52,20 @@ local function get_current_commit_message(callback)
   end)
 end
 
+--- Get a specific commit's message for metaedit
+---@param node string Revision identifier
+---@param callback fun(message: string|nil, err: string|nil)
+local function get_commit_message(node, callback)
+  cli.log():opt("-r", node):template("{desc}"):call({}, function(result)
+    if result.code == 0 then
+      local msg = table.concat(result.stdout, "\n")
+      callback(msg, nil)
+    else
+      callback(nil, table.concat(result.stderr, "\n"))
+    end
+  end)
+end
+
 --- Execute commit with message from buffer
 ---@param buf table Commit buffer
 ---@param files string[] Files to commit
@@ -123,7 +137,8 @@ end
 
 --- Execute amend with message from buffer
 ---@param buf table Amend buffer
-local function execute_amend(buf)
+---@param files string[] Files to amend (staged files)
+local function execute_amend(buf, files)
   -- Get message from buffer, filter comment lines
   local lines = buf:get_lines()
   local message_lines = {}
@@ -147,11 +162,21 @@ local function execute_amend(buf)
   local tmpfile = vim.fn.tempname()
   vim.fn.writefile(vim.split(message, "\n"), tmpfile)
 
-  cli.amend():opt("-l", tmpfile):call({}, function(result)
+  local builder = cli.amend():opt("-l", tmpfile)
+
+  -- Add staged files if any
+  if files and #files > 0 then
+    builder:files(files)
+  end
+
+  builder:call({}, function(result)
     vim.fn.delete(tmpfile)
 
     vim.schedule(function()
       if result.code == 0 then
+        -- Clear staged files
+        staged.clear()
+
         -- Close amend buffer
         buf:destroy()
         active_commit_buf = nil
@@ -181,13 +206,80 @@ local function execute_amend(buf)
   vim.bo[buf.handle].modified = false
 end
 
+--- Execute metaedit with message from buffer
+---@param buf table Metaedit buffer
+---@param node string Revision identifier to metaedit
+local function execute_metaedit(buf, node)
+  -- Get message from buffer, filter comment lines
+  local lines = buf:get_lines()
+  local message_lines = {}
+  for _, line in ipairs(lines) do
+    if not line:match("^#") then
+      table.insert(message_lines, line)
+    end
+  end
+
+  -- Trim whitespace
+  local message = table.concat(message_lines, "\n")
+  message = message:gsub("^%s+", ""):gsub("%s+$", "")
+
+  if message == "" then
+    vim.notify("Empty commit message - metaedit aborted", vim.log.levels.ERROR)
+    vim.bo[buf.handle].modified = false
+    return
+  end
+
+  -- Write message to temp file
+  local tmpfile = vim.fn.tempname()
+  vim.fn.writefile(vim.split(message, "\n"), tmpfile)
+
+  cli.metaedit():rev(node):opt("-l", tmpfile):call({}, function(result)
+    vim.fn.delete(tmpfile)
+
+    vim.schedule(function()
+      if result.code == 0 then
+        buf:destroy()
+        active_commit_buf = nil
+
+        -- Refresh both views
+        local ok1, status = pcall(require, "neosapling.status")
+        if ok1 and status.refresh then
+          status.refresh()
+        end
+        local ok2, smartlog = pcall(require, "neosapling.smartlog")
+        if ok2 and smartlog.refresh then
+          smartlog.refresh()
+        end
+
+        vim.notify("Commit message edited", vim.log.levels.INFO)
+      else
+        local err_msg = table.concat(result.stderr or {}, "\n")
+        if err_msg == "" then
+          err_msg = "Unknown error"
+        end
+        vim.notify("Metaedit failed: " .. err_msg, vim.log.levels.ERROR)
+      end
+    end)
+  end)
+
+  vim.bo[buf.handle].modified = false
+end
+
 --- Set up the editor buffer with content and keymaps
----@param opts table Options (amend boolean)
+---@param opts table Options (amend boolean, metaedit boolean, node string)
 ---@param files string[] Files for comment section
----@param existing_message string|nil Existing commit message for amend
+---@param existing_message string|nil Existing commit message for amend/metaedit
 local function setup_editor_buffer(opts, files, existing_message)
   local is_amend = opts.amend == true
-  local buf_name = is_amend and "neosapling://amend" or "neosapling://commit"
+  local is_metaedit = opts.metaedit == true
+  local buf_name
+  if is_metaedit then
+    buf_name = "neosapling://metaedit/" .. (opts.node or ""):sub(1, 7)
+  elseif is_amend then
+    buf_name = "neosapling://amend"
+  else
+    buf_name = "neosapling://commit"
+  end
 
   -- Create buffer
   local buf = ui.Buffer:new(buf_name)
@@ -201,7 +293,7 @@ local function setup_editor_buffer(opts, files, existing_message)
   -- Build initial content
   local initial_lines = {}
 
-  if is_amend and existing_message then
+  if (is_amend or is_metaedit) and existing_message then
     -- Pre-fill with existing commit message
     for _, line in ipairs(vim.split(existing_message, "\n")) do
       table.insert(initial_lines, line)
@@ -212,7 +304,14 @@ local function setup_editor_buffer(opts, files, existing_message)
   end
 
   -- Add comment lines
-  local comment_action = is_amend and "Amend commit message above." or "Enter commit message above."
+  local comment_action
+  if is_metaedit then
+    comment_action = "Edit commit message for " .. (opts.node or ""):sub(1, 7) .. " above."
+  elseif is_amend then
+    comment_action = "Amend commit message above."
+  else
+    comment_action = "Enter commit message above."
+  end
   table.insert(initial_lines, "# " .. comment_action)
   table.insert(initial_lines, "# Lines starting with # will be ignored.")
   table.insert(initial_lines, "#")
@@ -233,8 +332,8 @@ local function setup_editor_buffer(opts, files, existing_message)
   -- Position cursor at first line
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
 
-  -- Start in insert mode for new commit, normal mode for amend (message already present)
-  if not is_amend then
+  -- Start in insert mode for new commit, normal mode for amend/metaedit (message already present)
+  if not is_amend and not is_metaedit then
     vim.cmd("startinsert")
   end
 
@@ -242,8 +341,10 @@ local function setup_editor_buffer(opts, files, existing_message)
   vim.api.nvim_create_autocmd("BufWriteCmd", {
     buffer = buf.handle,
     callback = function()
-      if is_amend then
-        execute_amend(buf)
+      if is_metaedit then
+        execute_metaedit(buf, opts.node)
+      elseif is_amend then
+        execute_amend(buf, files)
       else
         execute_commit(buf, files)
       end
@@ -251,10 +352,11 @@ local function setup_editor_buffer(opts, files, existing_message)
   })
 
   -- Setup close handlers
+  local action_name = is_metaedit and "metaedit" or (is_amend and "amend" or "commit")
   vim.keymap.set("n", "q", function()
     buf:destroy()
     active_commit_buf = nil
-  end, { buffer = buf.handle, desc = "Close " .. (is_amend and "amend" or "commit") .. " buffer" })
+  end, { buffer = buf.handle, desc = "Close " .. action_name .. " buffer" })
 
   -- Cleanup on buffer wipeout
   vim.api.nvim_create_autocmd("BufWipeout", {
@@ -265,8 +367,8 @@ local function setup_editor_buffer(opts, files, existing_message)
   })
 end
 
---- Open commit/amend editor buffer
----@param opts? {amend?: boolean}
+--- Open commit/amend/metaedit editor buffer
+---@param opts? {amend?: boolean, metaedit?: boolean, node?: string}
 function M.open(opts)
   opts = opts or {}
 
@@ -276,7 +378,21 @@ function M.open(opts)
     return
   end
 
-  if opts.amend then
+  if opts.metaedit and opts.node then
+    -- Metaedit flow: fetch target commit's message, then open editor
+    get_commit_message(opts.node, function(existing_msg, err)
+      if err then
+        vim.schedule(function()
+          vim.notify("Failed to get commit message: " .. err, vim.log.levels.ERROR)
+        end)
+        return
+      end
+
+      vim.schedule(function()
+        setup_editor_buffer(opts, {}, existing_msg)
+      end)
+    end)
+  elseif opts.amend then
     -- Amend flow: fetch current message, then open editor with it
     get_current_commit_message(function(existing_msg, err)
       if err then

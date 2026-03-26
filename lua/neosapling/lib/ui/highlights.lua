@@ -57,6 +57,14 @@ local highlight_groups = {
   NeoSaplingSignalFail = { fg = "#ff0000", link = "DiagnosticError" }, -- ✗ signal failing
   NeoSaplingLocalChanges = { link = "WarningMsg" }, -- (local changes) indicator
   NeoSaplingDesc = { link = "Normal" }, -- Commit message text
+
+  -- Current commit line highlight (full-line background for @ commit)
+  NeoSaplingCurrentLine = { link = "CursorLine" },
+
+  -- Neogit-style diff highlights (full-line background with hl_eol)
+  NeoSaplingDiffAdd = { link = "DiffAdd" },
+  NeoSaplingDiffDelete = { link = "DiffDelete" },
+  NeoSaplingDiffHunkHeader = { link = "NeoSaplingSection" },
 }
 
 --- Check if a highlight group is already defined by user

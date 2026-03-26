@@ -58,4 +58,11 @@ function M.absorb()
   require("neosapling.actions.stack").absorb_with_preview()
 end
 
+--- Metaedit the current commit's message using buffer-based editor.
+--- Opens editor pre-filled with current commit message (same as amend but uses metaedit).
+function M.metaedit()
+  -- When invoked from popup (not on a specific commit), metaedit the current commit
+  require("neosapling.commit.editor").open({ metaedit = true, node = "." })
+end
+
 return M
