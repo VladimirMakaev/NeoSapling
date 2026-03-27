@@ -443,16 +443,18 @@ function M._render()
   -- Close sections that should be collapsed by default (only on initial open)
   if is_initial_open then
     close_default_collapsed(result.folds)
-    -- Position at @ commit and center viewport
-    M._position_at_current_commit()
+    -- Position at @ commit after folds are set up (scheduled to run after close_default_collapsed)
+    vim.schedule(function()
+      M._position_at_current_commit()
+    end)
     is_initial_open = false
-  end
-
-  -- Restore cursor position after render
-  if cursor and win ~= -1 and vim.api.nvim_win_is_valid(win) then
-    local line_count = vim.api.nvim_buf_line_count(status_buffer.handle)
-    cursor[1] = math.min(cursor[1], line_count)
-    vim.api.nvim_win_set_cursor(win, cursor)
+  else
+    -- Restore cursor position after render (not on initial open)
+    if cursor and win ~= -1 and vim.api.nvim_win_is_valid(win) then
+      local line_count = vim.api.nvim_buf_line_count(status_buffer.handle)
+      cursor[1] = math.min(cursor[1], line_count)
+      vim.api.nvim_win_set_cursor(win, cursor)
+    end
   end
 end
 
