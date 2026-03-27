@@ -59,7 +59,7 @@ local highlight_groups = {
   NeoSaplingDesc = { link = "Normal" }, -- Commit message text
 
   -- Current commit line highlight (full-line dark blue background for @ commit)
-  NeoSaplingCurrentLine = { bg = "#1a2742" },
+  NeoSaplingCurrentLine = { bg = "#132038" },
 
   -- Neogit-style diff highlights (full-line background with hl_eol)
   NeoSaplingDiffAdd = { link = "DiffAdd" },
