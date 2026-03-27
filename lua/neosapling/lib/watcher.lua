@@ -20,12 +20,25 @@ local open_buffers = {
   smartlog = false,
 }
 
---- Check if Watchman is available on the system.
---- Caches the result after first check.
+--- Check if Watchman is available and functional on the system.
+--- Caches the result after first check. Tests both that the binary
+--- exists and that it can actually run (handles permission errors).
 ---@return boolean
 function M.is_available()
   if available == nil then
-    available = vim.fn.executable("watchman") == 1
+    if vim.fn.executable("watchman") ~= 1 then
+      available = false
+    else
+      -- Verify watchman actually works (catches permission errors, broken installs)
+      local result = vim.system({ "watchman", "version" }, { text = true }):wait()
+      available = result.code == 0
+      if not available then
+        local stderr = result.stderr or ""
+        vim.schedule(function()
+          vim.notify("NeoSapling: Watchman found but not functional: " .. vim.trim(stderr), vim.log.levels.DEBUG)
+        end)
+      end
+    end
   end
   return available
 end
