@@ -103,6 +103,14 @@ test("Smartlog parser handles hash with parenthesized annotation", function()
   -- Real-world line: hash followed by "(Not backed up)" before metadata
   local line = "╷ @  e5c143173d (Not backed up)  Monday at 15:59  vmakaev  D97760145 Committed ‼"
   local result = parser.classify_line(line, nil)
+
+  -- Debug: test the patterns directly
+  local h1 = line:match("^(.-)([o@xO]%%*?)  (%%x+)  (.+)$")
+  local _, _, h2, ann = line:match("^(.-)([o@xO]%%*?)  (%%x+) (%%b())  (.+)$")
+  log("    [diag] annotation test: primary_match=" .. tostring(h1 ~= nil) .. " fallback_match=" .. tostring(h2 ~= nil))
+  log("    [diag] classify_line source: " .. debug.getinfo(parser.classify_line).source)
+  log("    [diag] result type: " .. result.type)
+
   assert(result.type == "commit_header", "Should parse as commit_header, got: " .. result.type)
   assert(result.commit.graphnode == "@", "Graphnode should be @, got: " .. result.commit.graphnode)
   assert(result.commit.node == "e5c143173d", "Node should be e5c143173d, got: " .. result.commit.node)
