@@ -77,7 +77,21 @@ end
 
 --- Setup all NeoSapling highlight groups
 --- Always sets plugin highlights. Users can override after setup() in their config.
+--- Also registers a ColorScheme autocmd to re-apply after theme changes.
 function M.setup()
+  M._apply()
+
+  -- Re-apply when colorscheme changes (themes clear all highlights)
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("NeoSaplingHighlights", { clear = true }),
+    callback = function()
+      M._apply()
+    end,
+  })
+end
+
+--- Apply all highlight definitions
+function M._apply()
   for name, definition in pairs(highlight_groups) do
     if definition.link then
       api.nvim_set_hl(0, name, { link = definition.link })
