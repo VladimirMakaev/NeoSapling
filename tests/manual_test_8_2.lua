@@ -16,8 +16,16 @@ local function flush_log()
   vim.fn.writefile(log_lines, LOG_FILE)
 end
 
--- Setup: ensure plugin is loaded
+-- Setup: ensure plugin is loaded with fresh modules
 vim.opt.runtimepath:prepend(vim.fn.getcwd())
+
+-- Clear cached neosapling modules so code changes take effect without restarting Neovim
+for mod_name, _ in pairs(package.loaded) do
+  if mod_name:match("^neosapling") then
+    package.loaded[mod_name] = nil
+  end
+end
+
 local ok, neosapling = pcall(require, "neosapling")
 if not ok then
   log("ERROR: Could not load neosapling. Make sure you're in the NeoSapling plugin directory.")
@@ -137,23 +145,45 @@ test("Smartlog opens and centers on @ commit", function()
     log("    [diag] ... (" .. (#buf_lines - max_diag_lines) .. " more lines)")
   end
 
-  -- Dump line_map
+  -- Dump line_map — only @ and local_changes commits, plus counts
   local lm = smartlog.get_line_map()
-  log("    [diag] line_map entries:")
-  local lm_keys = {}
-  for lnum, _ in pairs(lm) do table.insert(lm_keys, lnum) end
-  table.sort(lm_keys)
-  for _, lnum in ipairs(lm_keys) do
-    local item = lm[lnum]
-    local desc = item.type
-    if item.commit then
-      desc = desc .. " gn=" .. (item.commit.graphnode or "?") .. " node=" .. (item.commit.node or "?"):sub(1, 7)
+  local total_commits = 0
+  local at_entries = {}
+  local lc_entries = {}
+  for lnum, item in pairs(lm) do
+    if item.type == "commit" and item.commit then
+      total_commits = total_commits + 1
+      if item.commit.graphnode == "@" then
+        table.insert(at_entries, lnum)
+      end
+      if item.commit.local_changes then
+        table.insert(lc_entries, lnum)
+      end
     end
-    log("    [diag]   lnum=" .. lnum .. " " .. desc)
+  end
+  table.sort(at_entries)
+  table.sort(lc_entries)
+  log("    [diag] total commits in line_map: " .. total_commits)
+  log("    [diag] @ commits: " .. (#at_entries > 0 and table.concat(vim.tbl_map(tostring, at_entries), ", ") or "NONE"))
+  log("    [diag] local_changes commits (first 5): " .. table.concat(vim.tbl_map(tostring, vim.list_slice(lc_entries, 1, 5)), ", "))
+
+  -- Check cursor is on @ commit, or if no @, on a commit past hint bar
+  local cursor_item = lm[cursor[1]]
+  if cursor_item and cursor_item.commit then
+    log("    [diag] cursor commit: gn=" .. (cursor_item.commit.graphnode or "?") .. " node=" .. (cursor_item.commit.node or "?"):sub(1, 10))
   end
 
-  -- The hint bar takes 3 lines (2 hint rows + 1 blank), so @ commit should be after that
-  assert(cursor[1] > 3, "Cursor should be past hint bar (line " .. cursor[1] .. ", expected > 3)")
+  if #at_entries > 0 then
+    -- @ commit exists — cursor should be on it
+    local on_at = false
+    for _, lnum in ipairs(at_entries) do
+      if cursor[1] == lnum then on_at = true end
+    end
+    assert(on_at, "Cursor should be on @ commit (cursor=" .. cursor[1] .. ", @ at " .. table.concat(vim.tbl_map(tostring, at_entries), ",") .. ")")
+  else
+    -- No @ commit — cursor should at least be past hint bar
+    assert(cursor[1] > 3, "Cursor should be past hint bar (line " .. cursor[1] .. ", expected > 3)")
+  end
 
   smartlog.close()
 end)
