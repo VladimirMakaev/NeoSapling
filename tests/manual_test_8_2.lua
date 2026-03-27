@@ -25,6 +25,12 @@ for mod_name, _ in pairs(package.loaded) do
     package.loaded[mod_name] = nil
   end
 end
+-- Also clear the preload cache (LuaJIT may cache module loaders)
+for mod_name, _ in pairs(package.preload) do
+  if mod_name:match("^neosapling") then
+    package.preload[mod_name] = nil
+  end
+end
 
 local ok, neosapling = pcall(require, "neosapling")
 if not ok then
