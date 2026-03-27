@@ -84,6 +84,16 @@ test("Smartlog parser handles flexible hash lengths", function()
   assert(result3.type == "commit_header", "Should parse 8-char hash")
 end)
 
+test("Smartlog parser handles hash with parenthesized annotation", function()
+  local parser = require("neosapling.lib.parsers.smartlog_ssl")
+  -- Real-world line: hash followed by "(Not backed up)" before metadata
+  local line = "╷ @  e5c143173d (Not backed up)  Monday at 15:59  vmakaev  D97760145 Committed ‼"
+  local result = parser.classify_line(line, nil)
+  assert(result.type == "commit_header", "Should parse as commit_header, got: " .. result.type)
+  assert(result.commit.graphnode == "@", "Graphnode should be @, got: " .. result.commit.graphnode)
+  assert(result.commit.node == "e5c143173d", "Node should be e5c143173d, got: " .. result.commit.node)
+end)
+
 test("Smartlog parser handles O graphnode", function()
   local parser = require("neosapling.lib.parsers.smartlog_ssl")
   local result = parser.classify_line("  O  abcdef1234  Today at 10:00  remote/master", nil)

@@ -42,9 +42,21 @@ function M.classify_line(line, prev_commit)
   end
 
   -- Try to find graphnode + hash pattern
-  -- Pattern: {any graph prefix}{graphnode: o|@|x|O possibly with *}{2 spaces}{hex hash (8-12 chars)}{2 spaces}{metadata}
+  -- Pattern: {any graph prefix}{graphnode: o|@|x|O possibly with *}{2 spaces}{hex hash (8-12 chars)}{optional annotation}{2 spaces}{metadata}
   -- Broadened graphnode set and flexible hash length for robustness
+  -- Some commits have annotations like "(Not backed up)" between hash and metadata
   local prefix, graphnode, hash, metadata = line:match("^(.-)([o@xO]%*?)  (%x%x%x%x%x%x%x%x%x?%x?%x?%x?)  (.+)$")
+
+  -- Fallback: hash followed by parenthesized annotation then double-space metadata
+  -- e.g. "@ e5c143173d (Not backed up)  Monday at 15:59  vmakaev"
+  if not hash then
+    local p, gn, h, annotation, md = line:match("^(.-)([o@xO]%*?)  (%x%x%x%x%x%x%x%x%x?%x?%x?%x?) (%b())  (.+)$")
+    if h then
+      prefix, graphnode, hash = p, gn, h
+      -- Prepend annotation to metadata so parse_commit_metadata can handle it
+      metadata = annotation .. "  " .. md
+    end
+  end
 
   -- Fallback: try matching with single space separators (some Sapling configs)
   if not hash then
@@ -99,6 +111,9 @@ end
 ---@param metadata string Everything after the hash + double-space
 ---@return SslCommit
 function M.parse_commit_metadata(hash, graphnode, metadata)
+  -- Strip leading parenthesized annotations like "(Not backed up)" from metadata
+  metadata = metadata:gsub("^%b()  ", "")
+
   local commit = {
     node = hash,
     graphnode = graphnode,
