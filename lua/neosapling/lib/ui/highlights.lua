@@ -76,16 +76,13 @@ local function is_user_defined(name)
 end
 
 --- Setup all NeoSapling highlight groups
---- Only defines groups that aren't already set by user
+--- Always sets plugin highlights. Users can override after setup() in their config.
 function M.setup()
   for name, definition in pairs(highlight_groups) do
-    if not is_user_defined(name) then
-      -- If has a link, prefer it; otherwise use explicit definition
-      if definition.link then
-        api.nvim_set_hl(0, name, { link = definition.link, default = true })
-      else
-        api.nvim_set_hl(0, name, definition)
-      end
+    if definition.link then
+      api.nvim_set_hl(0, name, { link = definition.link })
+    else
+      api.nvim_set_hl(0, name, definition)
     end
   end
 end
