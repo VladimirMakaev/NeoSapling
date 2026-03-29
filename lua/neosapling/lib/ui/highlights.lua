@@ -41,7 +41,7 @@ local highlight_groups = {
   NeoSaplingUnstaged = { link = "DiffChange" }, -- Unstaged modified files
 
   -- Smartlog commit indicators
-  NeoSaplingCurrent = { bold = true, link = "Special" }, -- Current commit (@)
+  NeoSaplingCurrent = { fg = "#3574B0", bold = true }, -- Current commit (@) - darker blue
   NeoSaplingObsolete = { link = "Comment" }, -- Obsolete commits (x)
   NeoSaplingAuthor = { link = "Comment" }, -- Commit author
   NeoSaplingDate = { link = "Comment" }, -- Commit date
@@ -59,7 +59,7 @@ local highlight_groups = {
   NeoSaplingDesc = { link = "Normal" }, -- Commit message text
 
   -- Current commit line highlight (full-line dark blue background for @ commit)
-  NeoSaplingCurrentLine = { bg = "#132038" },
+  NeoSaplingCurrentLine = { bg = "#003366" },
 
   -- Neogit-style diff highlights (full-line background with hl_eol)
   NeoSaplingDiffAdd = { link = "DiffAdd" },

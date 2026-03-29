@@ -206,6 +206,14 @@ local function add_commit_highlights(highlights, line_0idx, line, commit)
       hl = "NeoSaplingCurrentLine",
       line_hl_group = "NeoSaplingCurrentLine",
     })
+    -- Color the entire line text as NeoSaplingCurrent (darker blue)
+    table.insert(highlights, {
+      line = line_0idx,
+      col_start = 0,
+      col_end = #line,
+      hl = "NeoSaplingCurrent",
+    })
+    return
   end
 
   -- Find hash position (byte offsets from string.find, 1-indexed)
@@ -372,7 +380,7 @@ local function add_message_highlights(highlights, line_0idx, line, commit)
       line = line_0idx,
       col_start = content_start - 1,
       col_end = #line,
-      hl = "NeoSaplingDesc",
+      hl = (commit and commit.graphnode == "@") and "NeoSaplingCurrent" or "NeoSaplingDesc",
     })
   end
 end
