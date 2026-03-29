@@ -198,6 +198,14 @@ local function setup_buffer()
 
   local bufnr = status_buffer.handle
 
+  -- Auto-refresh on focus gain (fallback when Watchman is unavailable)
+  vim.api.nvim_create_autocmd("FocusGained", {
+    buffer = bufnr,
+    callback = function()
+      M.refresh()
+    end,
+  })
+
   -- Set filetype
   vim.bo[bufnr].filetype = "neosapling"
 
