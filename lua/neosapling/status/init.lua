@@ -331,25 +331,26 @@ local function setup_buffer()
       local commit_node = item.commit_node
       local file_path = item.file.path
       local cli = require("neosapling.lib.cli")
-      -- Check if the commit is the current working copy — if so, just open from filesystem
-      cli.log():opt("-r", "."):template("{node}"):call({}, function(head_result)
+      -- Check if file is unchanged between commit and working copy
+      -- If sl diff -r <commit> <file> is empty, file is same — open from filesystem
+      cli.diff():rev(commit_node):file(file_path):call({}, function(result)
         vim.schedule(function()
-          local head_node = head_result.code == 0 and vim.trim(table.concat(head_result.stdout, "")) or ""
-          if head_node ~= "" and commit_node:sub(1, #head_node) == head_node:sub(1, math.min(#commit_node, #head_node)) then
-            -- Same as HEAD — open from filesystem
+          local has_diff = result.code ~= 0 or (#result.stdout > 0 and table.concat(result.stdout, "") ~= "")
+          if not has_diff then
+            -- File unchanged since this commit — open from filesystem
             vim.cmd("tabedit " .. vim.fn.fnameescape(file_path))
           else
-            -- Different revision — open in read-only buffer via sl cat
-            cli.run({ "sl", "cat", "-r", commit_node, file_path }, {}, function(result)
+            -- File differs — open at revision in read-only buffer
+            cli.run({ "sl", "cat", "-r", commit_node, file_path }, {}, function(cat_result)
               vim.schedule(function()
-                if result.code ~= 0 then
-                  vim.notify("Failed to read file at revision: " .. table.concat(result.stderr or {}, "\n"), vim.log.levels.ERROR)
+                if cat_result.code ~= 0 then
+                  vim.notify("Failed to read file at revision: " .. table.concat(cat_result.stderr or {}, "\n"), vim.log.levels.ERROR)
                   return
                 end
                 local buf_name = "neosapling://" .. commit_node:sub(1, 7) .. "/" .. file_path
                 local ui_mod = require("neosapling.lib.ui")
                 local buf = ui_mod.Buffer:new(buf_name)
-                buf:set_lines(result.stdout)
+                buf:set_lines(cat_result.stdout)
                 buf:show("tab")
                 local ft = vim.filetype.match({ filename = file_path, buf = buf.handle })
                 if ft then vim.bo[buf.handle].filetype = ft end
