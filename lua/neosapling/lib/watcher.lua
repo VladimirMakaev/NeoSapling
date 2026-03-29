@@ -106,32 +106,8 @@ local function on_notification(has_sl_changes)
   end)
 end
 
---- Process a single JSON message from Watchman
----@param msg string JSON message
-local function process_message(msg)
-  local ok, decoded = pcall(vim.json.decode, msg)
-  if not ok or not decoded then return end
-
-  if decoded.subscription then
-    local has_sl = false
-    if decoded.files then
-      for _, f in ipairs(decoded.files) do
-        local name = type(f) == "table" and f.name or (type(f) == "string" and f or nil)
-        if name and name:match("^%.sl/") then
-          has_sl = true
-          break
-        end
-      end
-    end
-    on_notification(has_sl)
-  elseif decoded.error then
-    vim.schedule(function()
-      vim.notify("NeoSapling watcher error: " .. decoded.error, vim.log.levels.WARN)
-    end)
-  end
-end
-
 --- Start a Watchman subscription via Unix socket.
+--- Uses a 3-step handshake: watch-project → clock → subscribe.
 local function start_subscription()
   if not M.is_available() then
     return
@@ -148,14 +124,76 @@ local function start_subscription()
   local root = util.find_root()
   if not root then return end
 
-  subscription_name = "neosapling-" .. vim.fn.getpid()
+  local sub_name = "neosapling-" .. vim.fn.getpid()
+  subscription_name = sub_name
   read_buffer = ""
 
-  -- Connect to Watchman Unix socket via libuv pipe
   local pipe = vim.uv.new_pipe(false)
   if not pipe then
     subscription_name = nil
     return
+  end
+
+  -- State machine: tracks which step we're on
+  -- 1 = waiting for watch-project response
+  -- 2 = waiting for clock response
+  -- 3 = waiting for subscribe response
+  -- 4 = subscribed, processing notifications
+  local state = 0
+  local watch_root = root
+
+  local function send(cmd)
+    pipe:write(vim.json.encode(cmd) .. "\n")
+  end
+
+  local function handle_response(decoded)
+    if state == 1 then
+      -- watch-project response
+      watch_root = decoded.watch or root
+      state = 2
+      send({ "clock", watch_root })
+    elseif state == 2 then
+      -- clock response
+      local clock = decoded.clock
+      state = 3
+      send({
+        "subscribe", watch_root, sub_name,
+        {
+          fields = { "name" },
+          since = clock,
+          defer = { "sl.update" },
+        },
+      })
+    elseif state == 3 then
+      -- subscribe response
+      if decoded.subscribe then
+        state = 4
+        sock_handle = pipe
+      else
+        vim.schedule(function()
+          vim.notify("NeoSapling: Watchman subscribe failed: " .. vim.json.encode(decoded), vim.log.levels.WARN)
+        end)
+      end
+    elseif state == 4 then
+      -- File change notification
+      if decoded.subscription then
+        local has_sl = false
+        if decoded.files then
+          for _, f in ipairs(decoded.files) do
+            local name = type(f) == "table" and f.name or (type(f) == "string" and f or nil)
+            if name and name:match("^%.sl/") then
+              has_sl = true
+              break
+            end
+          end
+        end
+        on_notification(has_sl)
+      elseif decoded.error then
+        vim.schedule(function()
+          vim.notify("NeoSapling watcher error: " .. decoded.error, vim.log.levels.WARN)
+        end)
+      end
+    end
   end
 
   pipe:connect(path, function(err)
@@ -168,26 +206,6 @@ local function start_subscription()
       return
     end
 
-    sock_handle = pipe
-
-    -- First send watch-project to ensure the root is watched
-    local watch_cmd = vim.json.encode({ "watch-project", root }) .. "\n"
-    pipe:write(watch_cmd)
-
-    -- Then send subscribe command
-    local subscribe_cmd = vim.json.encode({
-      "subscribe",
-      root,
-      subscription_name,
-      {
-        fields = { "name" },
-        since = "c:0:0",
-        defer = { "sl.update" },
-        expression = { "anyof", { "dirname", ".sl" }, { "match", "**" } },
-      },
-    }) .. "\n"
-    pipe:write(subscribe_cmd)
-
     -- Start reading responses
     pipe:read_start(function(read_err, data)
       if read_err then
@@ -197,7 +215,7 @@ local function start_subscription()
         return
       end
       if not data then
-        -- EOF — socket closed
+        -- EOF
         vim.schedule(function()
           subscription_name = nil
           sock_handle = nil
@@ -205,7 +223,6 @@ local function start_subscription()
         return
       end
 
-      -- Accumulate data and process complete JSON lines
       read_buffer = read_buffer .. data
       while true do
         local newline = read_buffer:find("\n")
@@ -213,10 +230,17 @@ local function start_subscription()
         local line = read_buffer:sub(1, newline - 1)
         read_buffer = read_buffer:sub(newline + 1)
         if line ~= "" then
-          process_message(line)
+          local ok, decoded = pcall(vim.json.decode, line)
+          if ok and decoded then
+            handle_response(decoded)
+          end
         end
       end
     end)
+
+    -- Kick off the handshake
+    state = 1
+    send({ "watch-project", root })
   end)
 end
 
