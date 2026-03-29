@@ -328,33 +328,40 @@ local function setup_buffer()
     elseif item.type == "bookmark" then
       require("neosapling.actions.stack").goto_commit(item.bookmark.node)
     elseif item.type == "commit_file" then
-      -- Open file at commit revision in a read-only buffer
       local commit_node = item.commit_node
       local file_path = item.file.path
       local cli = require("neosapling.lib.cli")
-      cli.run({ "sl", "cat", "-r", commit_node, file_path }, {}, function(result)
+      -- Check if the commit is the current working copy — if so, just open from filesystem
+      cli.log():opt("-r", "."):template("{node}"):call({}, function(head_result)
         vim.schedule(function()
-          if result.code ~= 0 then
-            vim.notify("Failed to read file at revision: " .. table.concat(result.stderr or {}, "\n"), vim.log.levels.ERROR)
-            return
+          local head_node = head_result.code == 0 and vim.trim(table.concat(head_result.stdout, "")) or ""
+          if head_node ~= "" and commit_node:sub(1, #head_node) == head_node:sub(1, math.min(#commit_node, #head_node)) then
+            -- Same as HEAD — open from filesystem
+            vim.cmd("tabedit " .. vim.fn.fnameescape(file_path))
+          else
+            -- Different revision — open in read-only buffer via sl cat
+            cli.run({ "sl", "cat", "-r", commit_node, file_path }, {}, function(result)
+              vim.schedule(function()
+                if result.code ~= 0 then
+                  vim.notify("Failed to read file at revision: " .. table.concat(result.stderr or {}, "\n"), vim.log.levels.ERROR)
+                  return
+                end
+                local buf_name = "neosapling://" .. commit_node:sub(1, 7) .. "/" .. file_path
+                local ui_mod = require("neosapling.lib.ui")
+                local buf = ui_mod.Buffer:new(buf_name)
+                buf:set_lines(result.stdout)
+                buf:show("tab")
+                local ft = vim.filetype.match({ filename = file_path, buf = buf.handle })
+                if ft then vim.bo[buf.handle].filetype = ft end
+                vim.keymap.set("n", "q", function()
+                  if vim.fn.tabpagenr('$') > 1 then
+                    vim.cmd("tabclose")
+                  end
+                  buf:destroy()
+                end, { buffer = buf.handle, desc = "Close file view" })
+              end)
+            end)
           end
-          local buf_name = "neosapling://" .. commit_node:sub(1, 7) .. "/" .. file_path
-          local ui_mod = require("neosapling.lib.ui")
-          local buf = ui_mod.Buffer:new(buf_name)
-          buf:set_lines(result.stdout)
-          buf:show("tab")
-          -- Set filetype based on extension for syntax highlighting
-          local ext = file_path:match("%.([^%.]+)$")
-          if ext then
-            local ft = vim.filetype.match({ filename = file_path, buf = buf.handle })
-            if ft then vim.bo[buf.handle].filetype = ft end
-          end
-          vim.keymap.set("n", "q", function()
-            if vim.fn.tabpagenr('$') > 1 then
-              vim.cmd("tabclose")
-            end
-            buf:destroy()
-          end, { buffer = buf.handle, desc = "Close file view" })
         end)
       end)
     elseif item.type == "file" and item.file then
