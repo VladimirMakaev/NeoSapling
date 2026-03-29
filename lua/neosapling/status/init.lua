@@ -206,7 +206,7 @@ local function setup_buffer()
     local lnum = vim.fn.line(".")
     local item = line_map[lnum]
 
-    if item and item.type == "commit" and item.commit then
+    if item and (item.type == "commit" or item.type == "message") and item.commit then
       -- Toggle commit file expansion (show files changed by this commit)
       toggle_commit_expand(item.commit)
     elseif item and item.type == "commit_file" then
