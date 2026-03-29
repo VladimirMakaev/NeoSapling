@@ -24,16 +24,22 @@ local open_buffers = {
 }
 
 --- Find the Watchman socket path.
---- Tries standard locations for the current user.
+--- Tries standard locations for the current user across macOS and Linux.
 ---@return string|nil
 local function find_sock_path()
   if sock_path then return sock_path end
 
-  -- Try common locations
   local user = vim.env.USER or vim.fn.expand("$USER")
   local candidates = {
+    -- macOS Meta internal (Homebrew/managed install)
     "/opt/facebook/watchman/var/run/watchman/" .. user .. "-state/sock",
+    -- Linux devservers (Meta internal)
+    "/var/facebook/watchman/" .. user .. "-state/sock",
+    "/run/watchman/" .. user .. "/sock",
+    -- Standard Watchman locations
     "/tmp/watchman-" .. user .. "/sock",
+    "/tmp/.watchman." .. user .. "/sock",
+    -- XDG / home dir fallback
     vim.env.HOME and (vim.env.HOME .. "/.watchman/sock") or nil,
   }
 
@@ -44,13 +50,16 @@ local function find_sock_path()
     end
   end
 
-  -- Try watchman get-sockname as last resort (may fail with fchmod)
-  local result = vim.system({ "watchman", "get-sockname" }, { text = true }):wait()
-  if result.code == 0 and result.stdout then
-    local ok, decoded = pcall(vim.json.decode, table.concat(type(result.stdout) == "table" and result.stdout or { result.stdout }, ""))
-    if ok and decoded and decoded.sockname then
-      sock_path = decoded.sockname
-      return sock_path
+  -- Try watchman get-sockname as last resort (may fail on broken installs)
+  if vim.fn.executable("watchman") == 1 then
+    local result = vim.system({ "watchman", "get-sockname" }, { text = true, timeout = 3000 }):wait()
+    if result.code == 0 and result.stdout then
+      local stdout = type(result.stdout) == "table" and table.concat(result.stdout, "") or result.stdout
+      local ok, decoded = pcall(vim.json.decode, stdout)
+      if ok and decoded and decoded.sockname then
+        sock_path = decoded.sockname
+        return sock_path
+      end
     end
   end
 
