@@ -234,15 +234,8 @@ local function setup_buffer()
       else
         vim.cmd("normal! zo")
       end
-    else
-      -- Default: toggle fold if on a fold
-      local foldclosed = vim.fn.foldclosed(".")
-      if foldclosed == -1 then
-        pcall(vim.cmd, "normal! zc")
-      else
-        vim.cmd("normal! zo")
-      end
     end
+    -- Lines with no item (graph-only lines, blank lines) — do nothing
   end, { buffer = bufnr, desc = "Toggle fold or file expansion" })
 
   -- Help popup (? key)
