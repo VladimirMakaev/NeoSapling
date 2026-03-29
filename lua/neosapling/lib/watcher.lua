@@ -177,17 +177,19 @@ local function start_subscription()
     elseif state == 4 then
       -- File change notification
       if decoded.subscription then
-        local has_sl = false
-        if decoded.files then
-          for _, f in ipairs(decoded.files) do
-            local name = type(f) == "table" and f.name or (type(f) == "string" and f or nil)
-            if name and (name:match("^%.sl/") or name:match("^%.hg/")) then
-              has_sl = true
-              break
-            end
+        -- Skip empty notifications (Eden sends these as bookends)
+        local files = decoded.files
+        if not files or #files == 0 then return end
+
+        local has_vcs = false
+        for _, f in ipairs(files) do
+          local name = type(f) == "table" and f.name or (type(f) == "string" and f or nil)
+          if name and (name:match("^%.sl/") or name:match("^%.hg/") or name:match("^%.edenfs")) then
+            has_vcs = true
+            break
           end
         end
-        on_notification(has_sl)
+        on_notification(has_vcs)
       elseif decoded.error then
         vim.schedule(function()
           vim.notify("NeoSapling watcher error: " .. decoded.error, vim.log.levels.WARN)
