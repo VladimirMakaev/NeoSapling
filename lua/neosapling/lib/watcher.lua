@@ -181,7 +181,7 @@ local function start_subscription()
         if decoded.files then
           for _, f in ipairs(decoded.files) do
             local name = type(f) == "table" and f.name or (type(f) == "string" and f or nil)
-            if name and name:match("^%.sl/") then
+            if name and (name:match("^%.sl/") or name:match("^%.hg/")) then
               has_sl = true
               break
             end

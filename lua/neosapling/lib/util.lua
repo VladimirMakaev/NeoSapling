@@ -39,15 +39,11 @@ end
 function M.find_root(path)
   path = path or vim.fn.getcwd()
 
-  local result = vim.fs.find(".sl", {
-    upward = true,
-    path = path,
-    type = "directory",
-  })
-
-  if #result > 0 then
-    -- Return parent directory of .sl
-    return vim.fn.fnamemodify(result[1], ":h")
+  -- Use hg root for reliable detection (works with both .sl and .hg repos)
+  local result = vim.system({ "hg", "root" }, { text = true, cwd = path }):wait()
+  if result.code == 0 and result.stdout then
+    local root = vim.trim(type(result.stdout) == "table" and table.concat(result.stdout, "") or result.stdout)
+    if root ~= "" then return root end
   end
 
   return nil
