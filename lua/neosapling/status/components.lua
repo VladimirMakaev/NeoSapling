@@ -151,9 +151,13 @@ local function build_smartlog_section(sl_lines, line_map, current_line, expanded
 
   -- Build text components for each sl line, and translate line_map entries
   -- Insert expanded commit files after commit lines
+  -- Track extra lines inserted so we can offset ssl parser highlights
   local tree_rows = {}
   local extra_highlights = {}
+  local inserted_lines_before = {} -- maps original ssl line index -> total inserted lines before it
+  local total_inserted = 0
   for i, line in ipairs(clean_lines) do
+    inserted_lines_before[i] = total_inserted
     current_line = current_line + 1
     table.insert(tree_rows, ui.text(line))
 
@@ -167,6 +171,7 @@ local function build_smartlog_section(sl_lines, line_map, current_line, expanded
         local commit_files = expanded_commits[sl_item.commit.node].files or {}
         for _, file in ipairs(commit_files) do
           current_line = current_line + 1
+          total_inserted = total_inserted + 1
           local status_hl = "NeoSaplingUntracked"
           if file.status == "M" then status_hl = "NeoSaplingModified"
           elseif file.status == "A" then status_hl = "NeoSaplingAdded"
@@ -176,7 +181,7 @@ local function build_smartlog_section(sl_lines, line_map, current_line, expanded
           table.insert(tree_rows, ui.text(file_line))
           -- Highlight the status char
           table.insert(extra_highlights, {
-            line = current_line - 1, -- 0-indexed
+            line = current_line - 1, -- 0-indexed absolute
             col_start = 6,
             col_end = 7,
             hl = status_hl,
@@ -192,13 +197,22 @@ local function build_smartlog_section(sl_lines, line_map, current_line, expanded
   end
 
   -- Translate highlights from ssl parser (0-indexed lines relative to sl output)
-  -- to status buffer positions (offset by section_start)
+  -- to status buffer positions (offset by section_start + inserted commit file lines)
   for _, hl in ipairs(raw_highlights) do
+    -- hl.line is 0-indexed relative to clean_lines, so ssl line index = hl.line + 1
+    local ssl_line_idx = hl.line + 1
+    local extra_offset = inserted_lines_before[ssl_line_idx] or 0
+    -- Find offset for lines after all clean_lines (e.g. line_hl_group on last line)
+    if ssl_line_idx > #clean_lines then
+      extra_offset = total_inserted
+    end
     table.insert(extra_highlights, {
-      line = hl.line + section_start, -- section_start is the header line, +1 for first content = section_start+1, but hl.line is already 0-indexed from ssl parser so line 0 = first sl line = section_start+1 in buffer = section_start in 0-indexed
+      line = hl.line + section_start + extra_offset,
       col_start = hl.col_start,
       col_end = hl.col_end,
       hl = hl.hl,
+      line_hl_group = hl.line_hl_group,
+      hl_eol = hl.hl_eol,
     })
   end
 
