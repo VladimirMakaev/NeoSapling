@@ -117,11 +117,14 @@ end
 ---@param sl_lines string[] Raw lines from sl smartlog -T '{sl}'
 ---@param line_map table<number, Item> Line map to populate
 ---@param current_line number Current line number (1-indexed)
+---@param expanded_commits? table<string, {files: FileStatus[]}> Expanded commit files
 ---@return Component|nil, number, table[] Smartlog section (nil if empty), updated line number, extra highlights
-local function build_smartlog_section(sl_lines, line_map, current_line)
+local function build_smartlog_section(sl_lines, line_map, current_line, expanded_commits)
   if not sl_lines or #sl_lines == 0 then
     return nil, current_line, {}
   end
+
+  expanded_commits = expanded_commits or {}
 
   -- Filter out trailing empty lines
   local clean_lines = {}
@@ -147,6 +150,7 @@ local function build_smartlog_section(sl_lines, line_map, current_line)
   line_map[section_start] = { type = "section", id = "smartlog" }
 
   -- Build text components for each sl line, and translate line_map entries
+  -- Insert expanded commit files after commit lines
   local tree_rows = {}
   local extra_highlights = {}
   for i, line in ipairs(clean_lines) do
@@ -157,6 +161,33 @@ local function build_smartlog_section(sl_lines, line_map, current_line)
     local sl_item = sl_line_map[i]
     if sl_item then
       line_map[current_line] = sl_item
+
+      -- If this is an expanded commit, insert its files
+      if sl_item.type == "commit" and sl_item.commit and expanded_commits[sl_item.commit.node] then
+        local commit_files = expanded_commits[sl_item.commit.node].files or {}
+        for _, file in ipairs(commit_files) do
+          current_line = current_line + 1
+          local status_hl = "NeoSaplingUntracked"
+          if file.status == "M" then status_hl = "NeoSaplingModified"
+          elseif file.status == "A" then status_hl = "NeoSaplingAdded"
+          elseif file.status == "R" then status_hl = "NeoSaplingRemoved"
+          end
+          local file_line = "      " .. file.status .. " " .. file.path
+          table.insert(tree_rows, ui.text(file_line))
+          -- Highlight the status char
+          table.insert(extra_highlights, {
+            line = current_line - 1, -- 0-indexed
+            col_start = 6,
+            col_end = 7,
+            hl = status_hl,
+          })
+          line_map[current_line] = {
+            type = "commit_file",
+            file = file,
+            commit_node = sl_item.commit.node,
+          }
+        end
+      end
     end
   end
 
@@ -220,12 +251,13 @@ local function build_bookmarks_section(bookmarks, line_map, current_line)
 end
 
 --- Build status view component tree
----@param data {status: GroupedStatus, sl_lines?: string[], bookmarks?: Bookmark[], expanded_files?: table<string, FileDiff>}
+---@param data {status: GroupedStatus, sl_lines?: string[], bookmarks?: Bookmark[], expanded_files?: table<string, FileDiff>, expanded_commits?: table<string, {files: FileStatus[]}>}
 ---@return Component, table<number, Item>, table[] tree, line mapping, extra highlights
 function M.build(data)
   local line_map = {}
   local current_line = 1
   local expanded_files = data.expanded_files or {}
+  local expanded_commits_data = data.expanded_commits or {}
   local extra_highlights = {}
 
   -- Separate modified files into staged vs unstaged
@@ -351,7 +383,8 @@ function M.build(data)
     local smartlog_section, line_after_smartlog, sl_highlights = build_smartlog_section(
       data.sl_lines,
       line_map,
-      current_line
+      current_line,
+      expanded_commits_data
     )
     if smartlog_section then
       table.insert(children, smartlog_section)

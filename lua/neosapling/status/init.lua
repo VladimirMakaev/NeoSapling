@@ -14,6 +14,7 @@ local current_data = nil
 local line_map = {}
 local fold_regions = {}
 local expanded_files = {}  -- path -> FileDiff cache
+local expanded_commits = {} -- node -> { files = FileStatus[] } for commit file expansion
 
 -- Fold level cache for performance (Pitfall #5 from RESEARCH.md)
 local fold_level_cache = {}
@@ -155,6 +156,40 @@ local function toggle_file_expand(file)
   end
 end
 
+--- Toggle commit file expansion (show/hide files changed by a commit)
+---@param commit SslCommit Commit to toggle
+local function toggle_commit_expand(commit)
+  local node = commit.node
+
+  -- If already expanded, collapse
+  if expanded_commits[node] then
+    expanded_commits[node] = nil
+    M._render()
+    return
+  end
+
+  -- Fetch files changed by this commit via sl status --change <rev>
+  local cli = require("neosapling.lib.cli")
+  cli.status():opt("--change", node):print0():call({}, function(result)
+    vim.schedule(function()
+      if result.code ~= 0 then
+        expanded_commits[node] = { files = {} }
+        M._render()
+        return
+      end
+
+      local parsers = require("neosapling.lib.parsers")
+      local files = parsers.status.parse(result.stdout)
+      -- Tag each file with the commit node for context
+      for _, file in ipairs(files) do
+        file.commit_node = node
+      end
+      expanded_commits[node] = { files = files }
+      M._render()
+    end)
+  end)
+end
+
 --- Setup buffer options and keymaps
 local function setup_buffer()
   if not status_buffer or not status_buffer:is_valid() then
@@ -166,12 +201,29 @@ local function setup_buffer()
   -- Set filetype
   vim.bo[bufnr].filetype = "neosapling"
 
-  -- Tab toggles fold or file expansion based on cursor position
+  -- Tab toggles fold, file diff expansion, or commit file expansion
   vim.keymap.set("n", "<Tab>", function()
     local lnum = vim.fn.line(".")
     local item = line_map[lnum]
 
-    if item and item.type == "file" then
+    if item and item.type == "commit" and item.commit then
+      -- Toggle commit file expansion (show files changed by this commit)
+      toggle_commit_expand(item.commit)
+    elseif item and item.type == "commit_file" then
+      -- Show diff for this commit's file
+      local commit_node = item.commit_node
+      local file_path = item.file.path
+      neosapling.sl.diff({ change = commit_node, files = { file_path } }, function(diffs, err)
+        if err then
+          vim.schedule(function() vim.notify("Diff failed: " .. err, vim.log.levels.ERROR) end)
+          return
+        end
+        vim.schedule(function()
+          local smartlog = require("neosapling.smartlog")
+          smartlog._show_diff_buffer(diffs, { node = commit_node, desc = file_path }, "vs parent")
+        end)
+      end)
+    elseif item and item.type == "file" then
       -- Toggle file diff expansion
       toggle_file_expand(item.file)
     elseif item and item.type == "section" then
@@ -273,7 +325,7 @@ local function setup_buffer()
     end
   end, { buffer = bufnr, desc = "Next section" })
 
-  -- Enter: goto commit or bookmark under cursor, or open file
+  -- Enter: goto commit or bookmark under cursor, open file, or view commit file at revision
   vim.keymap.set("n", "<CR>", function()
     local context = require("neosapling.status.context")
     local item = context.get_item_at_cursor(line_map)
@@ -282,6 +334,36 @@ local function setup_buffer()
       require("neosapling.actions.stack").goto_commit(item.commit.node)
     elseif item.type == "bookmark" then
       require("neosapling.actions.stack").goto_commit(item.bookmark.node)
+    elseif item.type == "commit_file" then
+      -- Open file at commit revision in a read-only buffer
+      local commit_node = item.commit_node
+      local file_path = item.file.path
+      local cli = require("neosapling.lib.cli")
+      cli.run({ "sl", "cat", "-r", commit_node, file_path }, {}, function(result)
+        vim.schedule(function()
+          if result.code ~= 0 then
+            vim.notify("Failed to read file at revision: " .. table.concat(result.stderr or {}, "\n"), vim.log.levels.ERROR)
+            return
+          end
+          local buf_name = "neosapling://" .. commit_node:sub(1, 7) .. "/" .. file_path
+          local ui_mod = require("neosapling.lib.ui")
+          local buf = ui_mod.Buffer:new(buf_name)
+          buf:set_lines(result.stdout)
+          buf:show("tab")
+          -- Set filetype based on extension for syntax highlighting
+          local ext = file_path:match("%.([^%.]+)$")
+          if ext then
+            local ft = vim.filetype.match({ filename = file_path, buf = buf.handle })
+            if ft then vim.bo[buf.handle].filetype = ft end
+          end
+          vim.keymap.set("n", "q", function()
+            if vim.fn.tabpagenr('$') > 1 then
+              vim.cmd("tabclose")
+            end
+            buf:destroy()
+          end, { buffer = buf.handle, desc = "Close file view" })
+        end)
+      end)
     elseif item.type == "file" and item.file then
       vim.cmd("tabedit " .. vim.fn.fnameescape(item.file.path))
     end
@@ -413,12 +495,13 @@ function M._render()
   -- Invalidate fold cache before render
   cache_valid = false
 
-  -- Build component tree with expanded files
+  -- Build component tree with expanded files and commits
   local build_data = {
     status = current_data.status,
     sl_lines = current_data.sl_lines,
     bookmarks = current_data.bookmarks,
     expanded_files = expanded_files,
+    expanded_commits = expanded_commits,
   }
   local tree, new_line_map, extra_highlights = components.build(build_data)
   line_map = new_line_map
@@ -574,6 +657,7 @@ function M.close()
   line_map = {}
   fold_regions = {}
   expanded_files = {}
+  expanded_commits = {}
   cached_sl_lines = nil
   cached_bookmarks = nil
   cache_valid = false
