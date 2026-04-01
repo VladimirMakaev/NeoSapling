@@ -2,6 +2,15 @@
 --- Monitors file changes via Watchman subscriptions and triggers
 --- debounced refreshes of status and smartlog views.
 --- Gracefully degrades to no-ops when Watchman is not available.
+---
+--- Uses a 3-step protocol with separate CLI invocations:
+---   1. `watchman -j` with watch-project command (one-shot)
+---   2. `watchman -j` with clock command (one-shot)
+---   3. `watchman -j -p` with subscribe command + `since` clock (persistent)
+---
+--- The `-p` flag keeps the subscribe process alive to stream notifications.
+--- The `since` clock is required for large repos (e.g. fbsource/Eden) to
+--- avoid an initial crawl that hangs indefinitely.
 --- @module neosapling.lib.watcher
 
 local M = {}
@@ -9,7 +18,7 @@ local M = {}
 -- Module state
 local available = nil -- Cached availability result (nil = not checked)
 local subscription_name = nil -- Active subscription name
-local watch_process = nil -- vim.SystemObj for the Watchman subscribe process
+local subscribe_process = nil -- vim.SystemObj for the persistent subscribe process
 local debounce_timer = nil -- uv_timer_t for debouncing notifications
 local paused = false -- Whether refresh is suppressed (during own operations)
 local pause_timer = nil -- Safety-net timer for auto-resume
@@ -60,8 +69,79 @@ local function on_notification(has_vcs_changes)
   end)
 end
 
+--- Run a one-shot Watchman JSON command.
+--- Sends the command via stdin and returns the parsed response in the callback.
+---@param cmd table The Watchman command array (e.g. {"watch-project", root})
+---@param callback fun(response: table|nil, err: string|nil)
+local function watchman_cmd(cmd, callback)
+  local json_input = vim.json.encode(cmd) .. "\n"
+
+  vim.system(
+    { "watchman", "-j", "--no-pretty" },
+    { stdin = json_input, text = true },
+    function(obj)
+      vim.schedule(function()
+        if obj.code ~= 0 then
+          callback(nil, "watchman exited with code " .. obj.code)
+          return
+        end
+
+        local stdout = obj.stdout or ""
+        if type(stdout) == "table" then
+          stdout = table.concat(stdout, "")
+        end
+        stdout = vim.trim(stdout)
+
+        if stdout == "" then
+          callback(nil, "watchman returned empty response")
+          return
+        end
+
+        local ok, decoded = pcall(vim.json.decode, stdout)
+        if not ok then
+          callback(nil, "failed to parse watchman response: " .. stdout:sub(1, 200))
+          return
+        end
+
+        if decoded.error then
+          callback(nil, "watchman error: " .. decoded.error)
+          return
+        end
+
+        callback(decoded, nil)
+      end)
+    end
+  )
+end
+
+--- Process a file change notification from the subscribe stream.
+---@param decoded table Parsed JSON notification
+local function handle_notification(decoded)
+  if not decoded.subscription then
+    return
+  end
+
+  local files = decoded.files
+  if not files or #files == 0 then
+    return
+  end
+
+  local has_vcs = false
+  for _, f in ipairs(files) do
+    local name = type(f) == "table" and f.name or (type(f) == "string" and f or nil)
+    if name and (name:match("^%.sl/") or name:match("^%.hg/") or name:match("^%.edenfs")) then
+      has_vcs = true
+      break
+    end
+  end
+  on_notification(has_vcs)
+end
+
 --- Start a Watchman subscription on the repository root.
---- Uses a 3-step CLI protocol: watch-project → clock → subscribe.
+--- Uses 3 separate CLI invocations:
+---   1. watch-project (one-shot) -> gets watch root
+---   2. clock (one-shot) -> gets clock token
+---   3. subscribe with -p flag (persistent) -> streams notifications
 local function start_subscription()
   if not M.is_available() then
     return
@@ -78,106 +158,102 @@ local function start_subscription()
   end
 
   subscription_name = "neosapling-" .. vim.fn.getpid()
+  local sub_name = subscription_name
 
-  -- State machine for the 3-step handshake
-  -- watchman -j -p: JSON protocol mode with persistent connection
-  local state = 0  -- 0=init, 1=watch-project sent, 2=clock sent, 3=subscribe sent, 4=active
-  local watch_root = root
-  local read_buffer = ""
-  local has_pending_vcs = false
+  -- Step 1: watch-project (one-shot)
+  watchman_cmd({ "watch-project", root }, function(wp_resp, wp_err)
+    -- Bail if subscription was cancelled during async wait
+    if subscription_name ~= sub_name then
+      return
+    end
 
-  local function handle_response(decoded)
-    if state == 1 then
-      -- watch-project response
-      watch_root = decoded.watch or root
-      state = 2
-      -- Send clock command
-      local clock_cmd = vim.json.encode({ "clock", watch_root }) .. "\n"
-      watch_process:write(clock_cmd)
-    elseif state == 2 then
-      -- clock response
-      state = 3
+    if wp_err then
+      subscription_name = nil
+      return
+    end
+
+    local watch_root = wp_resp.watch or root
+
+    -- Step 2: clock (one-shot)
+    watchman_cmd({ "clock", watch_root }, function(cl_resp, cl_err)
+      -- Bail if subscription was cancelled during async wait
+      if subscription_name ~= sub_name then
+        return
+      end
+
+      if cl_err or not cl_resp.clock then
+        subscription_name = nil
+        return
+      end
+
+      local clock = cl_resp.clock
+
+      -- Step 3: subscribe with -p flag (persistent)
       local subscribe_cmd = vim.json.encode({
-        "subscribe", watch_root, subscription_name,
+        "subscribe", watch_root, sub_name,
         {
           fields = { "name" },
-          since = decoded.clock,
+          since = clock,
           defer = { "sl.update" },
         },
       }) .. "\n"
-      watch_process:write(subscribe_cmd)
-    elseif state == 3 then
-      -- subscribe response
-      if decoded.subscribe then
-        state = 4
-      end
-    elseif state == 4 then
-      -- File change notification
-      if decoded.subscription then
-        local files = decoded.files
-        if not files or #files == 0 then return end
 
-        local has_vcs = false
-        for _, f in ipairs(files) do
-          local name = type(f) == "table" and f.name or (type(f) == "string" and f or nil)
-          if name and (name:match("^%.sl/") or name:match("^%.hg/") or name:match("^%.edenfs")) then
-            has_vcs = true
-            break
-          end
-        end
-        on_notification(has_vcs)
-      end
-    end
-  end
+      local read_buffer = ""
 
-  watch_process = vim.system(
-    { "watchman", "-j", "--no-pretty", "-p" },
-    {
-      stdin = true,
-      cwd = root,
-      text = true,
-      stdout = function(_, data)
-        if not data then return end
-        read_buffer = read_buffer .. data
-        while true do
-          local newline = read_buffer:find("\n")
-          if not newline then break end
-          local line = read_buffer:sub(1, newline - 1)
-          read_buffer = read_buffer:sub(newline + 1)
-          if line ~= "" then
-            local ok, decoded = pcall(vim.json.decode, line)
-            if ok and decoded then
-              handle_response(decoded)
+      subscribe_process = vim.system(
+        { "watchman", "-j", "--no-pretty", "-p" },
+        {
+          stdin = subscribe_cmd,
+          cwd = root,
+          text = true,
+          stdout = function(_, data)
+            if not data or not subscribe_process then
+              return
             end
-          end
-        end
-      end,
-    },
-    function(obj)
-      -- Process exited
-      vim.schedule(function()
-        subscription_name = nil
-        watch_process = nil
-      end)
-    end
-  )
 
-  -- Kick off handshake: send watch-project
-  state = 1
-  local watch_cmd = vim.json.encode({ "watch-project", root }) .. "\n"
-  watch_process:write(watch_cmd)
+            read_buffer = read_buffer .. data
+            while true do
+              local newline = read_buffer:find("\n")
+              if not newline then break end
+              local line = read_buffer:sub(1, newline - 1)
+              read_buffer = read_buffer:sub(newline + 1)
+              if line ~= "" then
+                local ok, decoded = pcall(vim.json.decode, line)
+                if ok and decoded then
+                  -- The first response is the subscribe confirmation;
+                  -- subsequent responses are file change notifications.
+                  if decoded.subscription then
+                    handle_notification(decoded)
+                  end
+                end
+              end
+            end
+          end,
+        },
+        function(_)
+          -- Subscribe process exited (killed or crashed)
+          vim.schedule(function()
+            if subscription_name == sub_name then
+              subscription_name = nil
+            end
+            subscribe_process = nil
+          end)
+        end
+      )
+    end)
+  end)
 end
 
 --- Stop the Watchman subscription and clean up all state.
 local function stop_subscription()
-  if watch_process then
-    pcall(function()
-      watch_process:kill("SIGTERM")
-    end)
-    watch_process = nil
-  end
-
   subscription_name = nil
+
+  if subscribe_process then
+    pcall(function()
+      subscribe_process:kill("SIGTERM")
+    end)
+    subscribe_process = nil
+  end
 
   if debounce_timer then
     debounce_timer:stop()
@@ -246,7 +322,7 @@ end
 --- Check if the watcher is active (subscription running).
 ---@return boolean
 function M.is_active()
-  return subscription_name ~= nil and watch_process ~= nil
+  return subscription_name ~= nil and subscribe_process ~= nil
 end
 
 --- Get watcher status info for diagnostics.
